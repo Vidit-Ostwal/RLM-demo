@@ -55,7 +55,7 @@ export default function Home() {
     setShuffleLoading(true)
 
     try {
-      const index = Math.floor(Math.random() * 100) + 1
+      const index = Math.floor(Math.random() * 450) + 1
       datasetIndexRef.current = index
 
       const res = await fetch(`http://localhost:8000/get-dataset?index=${index}`)
@@ -133,9 +133,9 @@ export default function Home() {
             onClick={() => dataset && setActiveModal({ type: "context" })}
             className="col-span-7 bg-white border border-slate-300 rounded-lg p-4 h-52 overflow-hidden cursor-pointer hover:shadow"
           >
-            <div className="font-semibold mb-2">Context </div>
-            <div className="text-sm whitespace-pre-wrap text-slate-800">
-              {dataset ? truncate(dataset.context, 550) : "No dataset loaded"}
+            <div className="font-semibold mb-2">Context</div>
+            <div className="text-sm whitespace-pre-wrap text-slate-800 pb-10">
+              {dataset ? truncate(dataset.context, 10000) : "No dataset loaded"}
             </div>
           </div>
 
@@ -145,7 +145,7 @@ export default function Home() {
               className="flex-1 bg-white border border-slate-300 rounded-lg p-4 overflow-hidden cursor-pointer hover:shadow"
             >
               <div className="font-semibold mb-2">User Query</div>
-              <div className="text-sm text-slate-800">
+              <div className="text-sm text-slate-800 pb-6">
                 {dataset ? truncate(dataset.query) : "No dataset loaded"}
               </div>
             </div>
@@ -155,7 +155,7 @@ export default function Home() {
               className="flex-1 bg-white border border-slate-300 rounded-lg p-4 overflow-hidden cursor-pointer hover:shadow"
             >
               <div className="font-semibold mb-2">Expected Answer</div>
-              <div className="text-sm text-slate-800">
+              <div className="text-sm text-slate-800 pb-6">
                 {dataset ? truncate(dataset.expected_answer) : "No dataset loaded"}
               </div>
             </div>
