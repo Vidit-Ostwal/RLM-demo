@@ -1,6 +1,6 @@
 "use client"
 
-import { useRef, useState } from "react"
+import { useRef, useState, useEffect } from "react"
 
 type RawMessage = {
   role: "system" | "assistant" | "user"
@@ -27,13 +27,41 @@ type DatasetSample = {
   expected_answer: string
 }
 
+/* ---------------- TYPEWRITER EFFECT ---------------- */
+
+function useTypewriter(text: string | undefined, speed = 6) {
+  const [displayed, setDisplayed] = useState("")
+
+  useEffect(() => {
+    if (!text) {
+      setDisplayed("")
+      return
+    }
+
+    let i = 0
+    setDisplayed("")
+
+    const interval = setInterval(() => {
+      i++
+      setDisplayed(text.slice(0, i))
+      if (i >= text.length) clearInterval(interval)
+    }, speed)
+
+    return () => clearInterval(interval)
+  }, [text])
+
+  return displayed
+}
+
+/* --------------------------------------------------- */
+
 export default function Home() {
   const [input, setInput] = useState("")
   const [messages, setMessages] = useState<UIMessage[]>([])
+  const [visibleMessages, setVisibleMessages] = useState<UIMessage[]>([])
   const [loading, setLoading] = useState(false)
 
   const [dataset, setDataset] = useState<DatasetSample | null>(null)
-  const [showAnswer, setShowAnswer] = useState(false)
 
   const [activeModal, setActiveModal] = useState<
     | { type: "context" | "query" | "expected_answer" }
@@ -50,6 +78,25 @@ export default function Home() {
     return text.length > max ? text.slice(0, max) + "......." : text
   }
 
+  /* ---- Stream messages one by one ---- */
+  useEffect(() => {
+    if (!messages.length) {
+      setVisibleMessages([])
+      return
+    }
+
+    setVisibleMessages([])
+    let i = 0
+
+    const interval = setInterval(() => {
+      i++
+      setVisibleMessages(messages.slice(0, i))
+      if (i >= messages.length) clearInterval(interval)
+    }, 1000)
+
+    return () => clearInterval(interval)
+  }, [messages])
+
   async function shuffleDataset() {
     if (shuffleLoading) return
     setShuffleLoading(true)
@@ -64,7 +111,7 @@ export default function Home() {
       setDataset(data)
       setInput(data.query)
       setMessages([])
-      setShowAnswer(false)
+      setVisibleMessages([])
     } finally {
       setShuffleLoading(false)
     }
@@ -74,25 +121,14 @@ export default function Home() {
     const out: UIMessage[] = []
 
     for (const msg of raw) {
-      out.push({
-        type: msg.role,
-        text: msg.content,
-      })
+      out.push({ type: msg.role, text: msg.content })
 
       if (msg.role === "assistant" && msg.code_blocks) {
-        for (const code of msg.code_blocks) {
-          out.push({
-            type: "repl_call",
-            code,
-          })
-        }
+        for (const code of msg.code_blocks) out.push({ type: "repl_call", code })
       }
 
       if (msg.role === "user" && msg.code_blocks_observed) {
-        out.push({
-          type: "repl_output",
-          text: msg.code_blocks_observed,
-        })
+        out.push({ type: "repl_output", text: msg.code_blocks_observed })
       }
     }
 
@@ -109,9 +145,7 @@ export default function Home() {
       const res = await fetch("http://localhost:8000/query", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          index: datasetIndexRef.current,
-        }),
+        body: JSON.stringify({ index: datasetIndexRef.current }),
       })
 
       const data: ApiResponse = await res.json()
@@ -122,9 +156,46 @@ export default function Home() {
     }
   }
 
+  /* -------- Modal typing -------- */
+  const modalText =
+    activeModal?.type === "chat"
+      ? activeModal.text
+      : activeModal?.type === "context"
+        ? dataset?.context
+        : activeModal?.type === "query"
+          ? dataset?.query
+          : dataset?.expected_answer
+
+  // Only animate chat
+  const animatedChatText = useTypewriter(
+    activeModal?.type === "chat" ? activeModal.text : ""
+  )
+
+  // What the UI should render
+  const displayText =
+    activeModal?.type === "chat" ? animatedChatText : modalText
+
+
   return (
     <main className="h-screen w-screen bg-slate-100 text-slate-900 flex flex-col p-6">
-      <h1 className="text-2xl font-bold mb-4">RLM Learning Console</h1>
+      <div className="flex items-center gap-2 mb-4 relative group">
+        <h1 className="text-2xl font-bold">RLM Learning Console</h1>
+
+        {/* Info button */}
+        <div className="relative">
+          <button className="w-5 h-5 flex items-center justify-center rounded-full border border-slate-400 text-slate-500 text-[10px] font-serif italic hover:bg-slate-300 hover:text-slate-700 transition-colors cursor-help">
+            i
+          </button>
+
+          {/* Tooltip */}
+          <div className="pointer-events-none absolute left-1/2 -translate-x-1/2 top-full mt-2 w-[450px] opacity-0 group-hover:opacity-100 translate-y-1 group-hover:translate-y-0 transition-all duration-200 bg-white border border-slate-300 shadow-lg rounded-lg p-3 text-xs text-slate-700 z-50">
+            <div className="font-semibold mb-1">Recursive Language Model</div>
+            <p className="leading-relaxed">
+              A Recursive Language Model (RLM) solves the long-context problem that limits traditional LLMs, which can only attend to a fixed number of tokens at once. Instead of feeding the whole input into the model, an RLM treats the prompt as an external environment and programmatically inspects, decomposes, and processes it. It uses a REPL where the model writes code to explore the data, makes recursive calls on smaller chunks, and combines results. This lets the model handle arbitrarily long input more accurately and cheaply than standard long-context tricks, dramatically outperforming base LLMs on complex tasks.
+            </p>
+          </div>
+        </div>
+      </div>
 
       {/* Dataset Viewer */}
       <div className="mb-6">
@@ -135,7 +206,7 @@ export default function Home() {
           >
             <div className="font-semibold mb-2">Context</div>
             <div className="text-sm whitespace-pre-wrap text-slate-800 pb-10">
-              {dataset ? truncate(dataset.context, 10000) : "No dataset loaded"}
+              {dataset ? truncate(dataset.context, 10000) : "Click on the Shuffle dataset to load the dataset"}
             </div>
           </div>
 
@@ -146,7 +217,7 @@ export default function Home() {
             >
               <div className="font-semibold mb-2">User Query</div>
               <div className="text-sm text-slate-800 pb-6">
-                {dataset ? truncate(dataset.query) : "No dataset loaded"}
+                {dataset ? truncate(dataset.query) : "Click on the Shuffle dataset to load the dataset"}
               </div>
             </div>
 
@@ -156,7 +227,7 @@ export default function Home() {
             >
               <div className="font-semibold mb-2">Expected Answer</div>
               <div className="text-sm text-slate-800 pb-6">
-                {dataset ? truncate(dataset.expected_answer) : "No dataset loaded"}
+                {dataset ? truncate(dataset.expected_answer) : "Click on the Shuffle dataset to load the dataset"}
               </div>
             </div>
           </div>
@@ -174,32 +245,15 @@ export default function Home() {
 
       {/* Chat */}
       <div className="flex-1 overflow-y-auto space-y-3 mb-4">
-        {messages.map((m, i) => {
+        {visibleMessages.map((m, i) => {
           const isAssistant = m.type === "assistant"
-
-          const role =
-            m.type === "system"
-              ? "SYSTEM"
-              : m.type === "user"
-                ? "USER"
-                : m.type === "assistant"
-                  ? "ASSISTANT"
-                  : m.type === "repl_call"
-                    ? "REPL CALL"
-                    : "REPL OUTPUT"
-
+          const role = m.type.toUpperCase()
           const align = isAssistant ? "ml-auto text-right" : "mr-auto text-left"
-
           const bg =
-            m.type === "system"
-              ? "bg-slate-100"
-              : m.type === "user"
-                ? "bg-blue-100"
-                : m.type === "assistant"
-                  ? "bg-slate-200"
-                  : m.type === "repl_call"
-                    ? "bg-black text-green-400"
-                    : "bg-slate-900 text-slate-100"
+            m.type === "user" ? "bg-blue-100" :
+              m.type === "assistant" ? "bg-slate-200" :
+                m.type === "repl_call" ? "bg-black text-green-400" :
+                  "bg-slate-900 text-slate-100"
 
           const fullText = m.type === "repl_call" ? m.code : m.text
 
@@ -207,17 +261,9 @@ export default function Home() {
             <div
               key={i}
               onClick={() => setActiveModal({ type: "chat", role, text: fullText })}
-              className={`${align} max-w-[70%] cursor-pointer relative border border-slate-300 rounded-lg p-3 pt-6 ${bg} hover:shadow-md transition`}
+              className={`${align} max-w-[70%] cursor-pointer border border-slate-300 rounded-lg p-3 ${bg}`}
             >
-              {/* Floating role label */}
-              <div className={`absolute -top-2 text-xs font-semibold text-slate-500 bg-transparent pointer-events-none ${align?.includes("ml-auto") ? "right-3" : "left-3"}`}>
-                {role}
-              </div>
-
-              {/* Message */}
-              <div className="text-sm whitespace-pre-wrap">
-                {truncate(fullText, 150)}
-              </div>
+              {truncate(fullText, 150)}
             </div>
           )
         })}
@@ -255,32 +301,20 @@ export default function Home() {
             className="bg-white rounded-xl p-6 w-[80vw] max-w-4xl max-h-[80vh] overflow-auto shadow-xl"
             onClick={(e) => e.stopPropagation()}
           >
-            {activeModal.type === "chat" ? (
-              <>
-                <h2 className="text-xl font-semibold mb-4">{activeModal.role}</h2>
-                <pre className="whitespace-pre-wrap text-slate-900">
-                  {activeModal.text}
-                </pre>
-              </>
-            ) : (
-              <>
-                <h2 className="text-xl font-semibold mb-4">
-                  {activeModal.type === "context"
-                    ? "Context"
-                    : activeModal.type === "query"
-                      ? "User Query"
-                      : "Expected Answer"}
-                </h2>
+            <h2 className="text-xl font-semibold mb-4">
+              {activeModal.type === "chat"
+                ? activeModal.role
+                : activeModal.type === "context"
+                  ? "Context"
+                  : activeModal.type === "query"
+                    ? "User Query"
+                    : "Expected Answer"}
+            </h2>
 
-                <pre className="whitespace-pre-wrap text-slate-900">
-                  {activeModal.type === "context"
-                    ? dataset?.context
-                    : activeModal.type === "query"
-                      ? dataset?.query
-                      : dataset?.expected_answer}
-                </pre>
-              </>
-            )}
+            <pre className="whitespace-pre-wrap text-slate-900">
+              {displayText}
+              {activeModal?.type === "chat" && <span className="animate-pulse">▍</span>}
+            </pre>
           </div>
         </div>
       )}
