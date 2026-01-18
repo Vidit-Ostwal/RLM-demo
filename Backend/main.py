@@ -33,10 +33,17 @@ class QueryRequest(BaseModel):
 def health_check():
     return {"status": "ok"}
 
+import json
+
 @app.get("/get-dataset")
 def get_dataset(index: int):
-    dataset = load_dataset("oolongbench/oolong-real", DATASET_SUBSET, split=DATASET_SPLIT)
-    example = dataset[index]
+    if index == 10:
+        with open("loading_index.json", "r") as f:
+            example = json.load(f)
+    else:
+        dataset = load_dataset("oolongbench/oolong-real", DATASET_SUBSET, split=DATASET_SPLIT)
+        example = dataset[index]
+
     return {
         "context": example["context_window_text"],
         "query": example["question"],
