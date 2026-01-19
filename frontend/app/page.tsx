@@ -1,6 +1,7 @@
 "use client"
 
 import { useRef, useState, useEffect } from "react"
+import { ChatExpandToggle } from "./components/ChatExpandToggle"
 
 type RawMessage = {
   role: "system" | "assistant" | "user"
@@ -16,10 +17,10 @@ type ApiResponse = {
 
 type UIMessage =
   | { type: "system"; text: string }
-  | { type: "assistant"; text: string }
+  | { type: "assistant"; text: string; usage?: any }
   | { type: "user"; text: string }
-  | { type: "repl_call"; code: string }
-  | { type: "repl_output"; text: string }
+  | { type: "repl_call"; code: string; is_sub_llm_called: boolean }
+  | { type: "repl_env_output"; text: string }
 
 type DatasetSample = {
   context: string
@@ -61,6 +62,7 @@ export default function Home() {
   const [visibleMessages, setVisibleMessages] = useState<UIMessage[]>([])
   const [loading, setLoading] = useState(false)
   const [charLimit, setCharLimit] = useState(650)
+  const [chatExpanded, setChatExpanded] = useState(false)
 
   const [dataset, setDataset] = useState<DatasetSample | null>(null)
 
@@ -73,6 +75,41 @@ export default function Home() {
   const [shuffleLoading, setShuffleLoading] = useState(false)
   const datasetIndexRef = useRef<number | null>(null)
   const initialLoadRef = useRef(false)
+
+  const ROLE_BADGES = [
+    {
+      role: "system",
+      label: "system",
+      tooltipTitle: "System Prompt",
+      tooltipDescription:
+        "The system prompt defines the model's role, task, and constraints. It guides the model's behavior and ensures consistent responses.",
+    },
+    {
+      role: "user",
+      label: "user",
+      tooltipTitle: "User Message",
+      tooltipDescription: "Direct input provided by the user.",
+    },
+    {
+      role: "assistant",
+      label: "assistant",
+      tooltipTitle: "Assistant Message",
+      tooltipDescription: "Model-generated response based on context and tools. Hover over any assistant message to view the exact tokens and cost.",
+    },
+    {
+      role: "repl_call",
+      label: "repl_call",
+      tooltipTitle: "REPL Call",
+      tooltipDescription: "Code execution step initiated by the model in the assistant message to be executed in the REPL environment.",
+    },
+    {
+      role: "repl_env_output",
+      label: "repl_env_output",
+      tooltipTitle: "REPL Output",
+      tooltipDescription: "Execution result returned from the REPL environment.",
+    },
+  ]
+
 
   useEffect(() => {
     if (initialLoadRef.current) return
@@ -110,7 +147,7 @@ export default function Home() {
 
     setCharLimit(Math.floor(Math.random() * 51) + 500)
     try {
-      const targetIndex = index ?? Math.floor(Math.random() * 450) + 1
+      const targetIndex = (index ?? Math.floor(Math.random() * 450) + 1) % 15
       datasetIndexRef.current = targetIndex
 
       const res = await fetch(`http://localhost:8000/get-dataset?index=${targetIndex}`)
@@ -125,20 +162,81 @@ export default function Home() {
     }
   }
 
-  async function transformTrace(raw: RawMessage[]): Promise<UIMessage[]> {
+  function RoleBadge({ role, label, tooltipTitle, tooltipDescription }: { role: string, label: string, tooltipTitle?: string, tooltipDescription?: string }) {
+    return (
+      <div className="relative group">
+        {/* Badge */}
+        <div className={`text-[10px] font-semibold uppercase tracking-wide px-3 py-1 rounded border border-slate-300 cursor-help ${getMessageBg(role)}`}>{label}</div>
+
+        {/* Tooltip */}
+        {(tooltipTitle || tooltipDescription) && (
+          <div className="pointer-events-none absolute left-1/2 -translate-x-1/2 top-full mt-2 w-[450px] opacity-0 translate-y-1 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-200 bg-white border border-slate-300 shadow-lg rounded-lg p-3 text-xs text-slate-700 z-50">
+            {tooltipTitle && <div className="font-semibold mb-1">{tooltipTitle}</div>}
+            {tooltipDescription && <p className="leading-relaxed">{tooltipDescription}</p>}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+
+  function getMessageBg(type: string) {
+    switch (type) {
+      case "user":
+        return "bg-blue-100"
+      case "assistant":
+        return "bg-slate-200"
+      case "repl_call":
+      case "repl_env_output":
+        return "bg-black text-green-400"
+      default:
+        return "bg-slate-900 text-slate-100"
+    }
+  }
+
+  async function transformTrace(
+    raw?: RawMessage[]
+  ): Promise<UIMessage[]> {
+    if (!Array.isArray(raw)) {
+      console.warn("transformTrace: raw is not array", raw)
+      return []
+    }
+
     const out: UIMessage[] = []
 
     for (const msg of raw) {
-      out.push({ type: msg.role, text: msg.content })
+      const content = msg.content ?? ""
 
-      if (msg.role === "assistant" && msg.code_blocks) {
-        for (const code of msg.code_blocks) out.push({ type: "repl_call", code })
+      // assistant messages with code blocks
+      if (
+        msg.role === "assistant" &&
+        Array.isArray(msg.code_blocks) &&
+        msg.code_blocks.length > 0
+      ) {
+        out.push({ type: "assistant", text: content, usage: msg.usage })
+
+        for (const code of msg.code_blocks) {
+          const is_sub_llm_called = code.includes("llm_query") || code.includes("llm_query_batched")
+          out.push({ type: "repl_call", code, is_sub_llm_called })
+        }
+        continue
       }
 
-      if (msg.role === "user" && msg.code_blocks_observed) {
-        out.push({ type: "repl_output", text: msg.code_blocks_observed })
+      // user messages with observed code output
+      if (
+        msg.role === "user" &&
+        typeof msg.code_blocks_observed === "string" &&
+        msg.code_blocks_observed.length > 0
+      ) {
+        out.push({ type: "repl_env_output", text: msg.code_blocks_observed })
+        out.push({ type: "user", text: content })
+        continue
       }
+
+      // default case
+      out.push({ type: msg.role, text: content })
     }
+    console.log("transformTrace out:", out)
 
     return out
   }
@@ -157,6 +255,13 @@ export default function Home() {
       })
 
       const data: ApiResponse = await res.json()
+
+      if (!Array.isArray(data.messages)) {
+        console.error("Invalid API response:", data)
+        setMessages([])
+        return
+      }
+
       const uiMessages = await transformTrace(data.messages)
       setMessages(uiMessages)
     } finally {
@@ -186,7 +291,9 @@ export default function Home() {
 
   return (
     <main className="h-screen w-screen bg-slate-100 text-slate-900 flex flex-col p-6">
-      <div className="flex items-center justify-center gap-2 mb-4 relative shrink-0">
+
+      {/* Header */}
+      <div className="flex items-center justify-center gap-2 mb-3 relative shrink-0">
         <h1 className="text-2xl font-bold">Recursive Language Model</h1>
 
         {/* Info button wrapper becomes the group */}
@@ -196,12 +303,7 @@ export default function Home() {
           </button>
 
           {/* Tooltip */}
-          <div className="pointer-events-none absolute left-1/2 -translate-x-1/2 top-full mt-2 w-[450px]
-              opacity-0 translate-y-1
-              group-hover:opacity-100 group-hover:translate-y-0
-              transition-all duration-200
-              bg-white border border-slate-300 shadow-lg rounded-lg p-3 text-xs text-slate-700 z-50">
-
+          <div className="pointer-events-none absolute left-1/2 -translate-x-1/2 top-full mt-2 w-[450px] opacity-0 translate-y-1 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-200 bg-white border border-slate-300 shadow-lg rounded-lg p-3 text-xs text-slate-700 z-50">
             <div className="font-semibold mb-1">Recursive Language Model</div>
             <p className="leading-relaxed">
               A Recursive Language Model (RLM) solves the long-context problem that limits traditional LLMs, which can only attend to a fixed number of tokens at once. Instead of feeding the whole input into the model, an RLM treats the prompt as an external environment and programmatically inspects, decomposes, and processes it. It uses a REPL where the model writes code to explore the data, makes recursive calls on smaller chunks, and combines results. This lets the model handle arbitrarily long input more accurately and cheaply than standard long-context tricks, dramatically outperforming base LLMs on complex tasks.
@@ -211,25 +313,14 @@ export default function Home() {
 
         <div className="absolute right-1 group">
           <button
-            onClick={() => {
-              setDataset(null);
-              setInput("");
-              setMessages([]);
-              setVisibleMessages([]);
-            }}
+            onClick={() => { setDataset(null); setInput(""); setMessages([]); setVisibleMessages([]); }}
             className="text-xs text-slate-500 hover:text-slate-700 border border-slate-400 px-2 py-1 rounded bg-white hover:bg-slate-50 transition-colors uppercase"
           >
             Reset
           </button>
-          <div
-            className="
-              pointer-events-none absolute right-0 top-full mt-2 w-64
-              opacity-0 translate-y-1
-              group-hover:opacity-100 group-hover:translate-y-0
-              transition-all duration-200
-              bg-white border border-slate-300 shadow-lg rounded-lg p-2 text-xs text-slate-700 z-50 
-              text-left origin-top-right"
-          >
+
+          <div className="pointer-events-none absolute right-0 top-full mt-2 w-[450px] opacity-0 translate-y-1 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-200 bg-white border border-slate-300 shadow-lg rounded-lg p-3 text-xs text-slate-700 z-50">
+            <div className="font-semibold mb-1">Reset</div>
             <p className="leading-relaxed">
               Clicking this will reset the application state and reload the page.
             </p>
@@ -267,7 +358,7 @@ export default function Home() {
 
             {/* Tooltip */}
             <div
-              className="pointer-events-none absolute -top-2 left-1/4 -translate-x-1/2 -translate-y-full
+              className="pointer-events-none absolute -top-2 left-1/3 -translate-x-1/2 -translate-y-full
         opacity-0 group-hover:opacity-100 transition
         bg-black text-white text-xs rounded-md px-3 py-2 w-96 shadow-lg z-50"
             >
@@ -320,7 +411,7 @@ export default function Home() {
                     : "bg-indigo-600 hover:bg-indigo-700 cursor-pointer"
                   }`}
               >
-                {shuffleLoading ? "Loading..." : "SHUFFLE"}
+                {shuffleLoading ? "LOADING..." : "SHUFFLE"}
               </button>
 
               <button
@@ -332,7 +423,7 @@ export default function Home() {
                     : "bg-slate-900 hover:bg-slate-800 cursor-pointer"
                   }`}
               >
-                {loading ? "Running..." : "RUN RLM QUERY"}
+                {loading ? "RUNNING..." : "RUN RLM QUERY"}
               </button>
 
             </div>
@@ -341,36 +432,68 @@ export default function Home() {
       </div>
 
       {/* Chat container */}
-      <div className="flex-1 min-h-0 mb-4">
+      <div className={`min-h-0 mb-4 transition-all duration-300 ${chatExpanded ? "fixed inset-0 z-50 p-6 bg-slate-100" : "flex-1 px-24"}`}>
         <div className="border border-slate-300 rounded-xl bg-white shadow-sm h-full flex flex-col min-h-0">
 
           {/* Header (fixed) */}
-          <div className="px-4 py-2 border-b border-slate-200 text-xs font-semibold text-slate-600 uppercase tracking-wide shrink-0">
-            Conversation Trace
+          <div className="px-4 py-2 border-b border-slate-200 shrink-0 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold text-slate-600 uppercase tracking-wide">
+                Conversation Trace
+              </span>
+
+              <div className="ml-6 flex items-center gap-3 normal-case font-normal tracking-wide">
+                {ROLE_BADGES.map((badge) => (
+                  <RoleBadge key={badge.role} {...badge} />
+                ))}
+              </div>
+            </div>
+
+            <ChatExpandToggle
+              expanded={chatExpanded}
+              disabled={visibleMessages.length === 0}
+              onToggle={() => setChatExpanded(!chatExpanded)}
+            />
           </div>
 
           {/* Scrollable messages (ONLY this scrolls) */}
           <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3">
             {visibleMessages.map((m, i) => {
-              const isAssistant = m.type === "assistant"
+              const isAssistant = m.type === "assistant" || m.type === "repl_call"
               const role = m.type.toUpperCase()
-              const align = isAssistant ? "ml-auto text-right" : "mr-auto text-left"
-
-              const bg =
-                m.type === "user" ? "bg-blue-100" :
-                  m.type === "assistant" ? "bg-slate-200" :
-                    m.type === "repl_call" ? "bg-black text-green-400" :
-                      "bg-slate-900 text-slate-100"
-
+              const align = isAssistant ? "ml-auto" : "mr-auto"
+              const bg = getMessageBg(m.type);
               const fullText = m.type === "repl_call" ? m.code : m.text
 
               return (
                 <div
                   key={i}
                   onClick={() => setActiveModal({ type: "chat", role, text: fullText })}
-                  className={`${align} max-w-[70%] cursor-pointer border border-slate-300 rounded-lg p-3 ${bg}`}
+                  className={`${align} w-fit max-w-[70%] cursor-pointer border border-slate-300 rounded-lg p-3 ${bg} relative mt-2 group`}
                 >
-                  {truncate(fullText, 150)}
+                  <div className={`absolute -top-2 ${isAssistant ? "right-2" : "left-2"} flex gap-1`}>
+                    {m.type === "repl_call" && m.is_sub_llm_called && (
+                      <div className={`text-[10px] font-bold px-1 rounded border border-slate-300 ${bg}`}>
+                        SUB-LLM CALL
+                      </div>
+                    )}
+                    <div className={`text-[10px] font-bold px-1 rounded border border-slate-300 ${bg}`}>
+                      {role}
+                    </div>
+                  </div>
+
+                  <div className="whitespace-pre-wrap break-words text-sm text-left">
+                    {truncate(fullText, 1250)}
+                  </div>
+
+                  {m.type === "assistant" && m.usage && (
+                    <div className="absolute top-6 right-2 z-50 opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-slate-900 text-white text-[12px] px-2 py-1 rounded shadow-lg pointer-events-none">
+                      <div>Input Tokens: {m.usage.prompt_tokens}</div>
+                      <div>Output Tokens: {m.usage.completion_tokens}</div>
+                      <div>Total Tokens: {m.usage.total_tokens}</div>
+                      <div>Cost: ${m.usage.cost}</div>
+                    </div>
+                  )}
                 </div>
               )
             })}
@@ -417,12 +540,11 @@ export default function Home() {
               </svg>
             </button>
 
-
             <hr className="border-slate-400 mb-4" />
 
             {/* 👇 Conversation box */}
             <div className="border border-slate-300 rounded-lg p-4 bg-slate-50 max-h-[60vh] overflow-auto">
-              <pre className="whitespace-pre-wrap font-normal text-slate-800">
+              <pre className="whitespace-pre-wrap font-sans text-slate-800">
                 {displayText}
               </pre>
             </div>
