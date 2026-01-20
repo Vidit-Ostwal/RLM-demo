@@ -2,9 +2,9 @@ from huggingface_hub import InferenceClient
 from dotenv import load_dotenv
 import os
 
-from repl_env import REPLEnv
-from repl_env.prompts import (
-    RLM_SYSTEM_PROMPT,  # Use Qwen version (with cost warning)
+from Backend.repl_env import REPLEnv
+from Backend.repl_env.prompts import (
+    RLM_SYSTEM_PROMPT,
     QueryMetadata,
     build_rlm_system_prompt,
     build_user_prompt,
