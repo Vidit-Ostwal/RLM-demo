@@ -140,6 +140,7 @@ export default function Home() {
     }
   }
 
+
   /* -------- Modal typing -------- */
   const modalText =
     activeModal?.type === "chat"
@@ -305,12 +306,12 @@ export default function Home() {
 
         {/* LEFT: CHAT (7 cols) */}
         <div className="col-span-6 min-h-0">
-          <div className="border border-slate-300 rounded-xl bg-white shadow-sm h-full flex flex-col min-h-0">
+          <div className="border border-green-500 rounded-xl bg-black h-full flex flex-col min-h-0">
 
             {/* HEADER */}
-            <div className="px-4 py-2 border-b border-slate-200 shrink-0 flex items-center justify-between">
+            <div className="px-4 py-2 border-b border-green-500 bg-black shrink-0 flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <span className="text-xs font-semibold text-slate-600 uppercase tracking-wide">
+                <span className="text-xs font-semibold text-green-400 uppercase tracking-wide">
                   Conversation Trace
                 </span>
 
@@ -323,9 +324,9 @@ export default function Home() {
 
               <div className="flex items-center gap-3">
                 {pausedRef.current && (
-                  <div className="flex items-center gap-2 px-3 py-1 text-[10px] font-semibold uppercase tracking-wide rounded border border-amber-300 bg-amber-50 text-amber-700">
+                  <div className="flex items-center gap-2 px-3 py-1 text-[10px] font-semibold uppercase tracking-wide rounded border border-red-500 bg-black text-red-400">
                     <span className="relative flex h-2 w-2">
-                      <span className="animate-pulse inline-flex h-full w-full rounded-full bg-amber-500" />
+                      <span className="animate-pulse inline-flex h-full w-full rounded-full bg-red-500" />
                     </span>
                     <span className="whitespace-nowrap">
                       Paused · click on REPL Interaction button below
@@ -342,12 +343,11 @@ export default function Home() {
             </div>
 
             {/* SCROLL AREA */}
-            <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3">
+            <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4 bg-black">
               {visibleMessages.map((m, i) => {
                 const isAssistant = m.type === "assistant" || m.type === "repl_call"
                 const role = m.type.toUpperCase()
                 const align = isAssistant ? "ml-auto" : "mr-auto"
-                const bg = getMessageBg(m.type)
                 const fullText = m.type === "repl_call" ? m.code : m.text
 
                 if (m.type === "repl_env_interaction") {
@@ -365,28 +365,42 @@ export default function Home() {
                         pausedRef.current = false
                         runUntilPause()
                       }}
-                      className="mx-auto w-fit cursor-pointer border border-slate-800 rounded-full px-4 py-1 bg-black text-[10px] font-medium text-green-400 hover:bg-slate-900 transition-colors uppercase tracking-wider"
+                      className="
+                mx-auto w-fit cursor-pointer
+                border border-red-500
+                rounded-full px-4 py-1
+                bg-black text-red-400
+                text-[10px] font-semibold
+                uppercase tracking-widest
+                hover:bg-red-950
+                transition-colors
+              "
                     >
                       {m.text}
                     </div>
                   )
                 }
 
+                const styles = getMessageBg(m.type)
+
                 return (
                   <div
                     key={i}
                     onClick={() => setActiveModal({ type: "chat", role, text: fullText })}
-                    className={`${align} w-fit max-w-[90%] cursor-pointer border border-slate-300 rounded-lg p-3 ${bg} relative mt-2 group`}
-                  >
+                    className={`${align} w-fit max-w-[90%] cursor-pointer border rounded-lg p-3 pt-5 relative mt-2 group bg-black ${styles}`}>
+                    {/* ROLE TAGS */}
                     <div className={`absolute -top-2 ${isAssistant ? "right-2" : "left-2"} flex gap-1`}>
-                      {m.type === "repl_call" && m.is_sub_llm_called && (<div className={`text-[10px] font-bold px-1 rounded border border-slate-300 ${bg}`}> SUB-LLM CALL </div>)}
-                      <div className={`text-[10px] font-bold px-1 rounded border border-slate-300 ${bg}`}>{role}</div>
+                      <div className={`text-[10px] font-bold px-1 rounded border bg-black ${styles}`}>
+                        {role}
+                      </div>
                     </div>
 
-                    <div className="whitespace-pre-wrap break-words text-sm text-left"> {truncate(fullText, 1250)} </div>
+                    {/* MESSAGE */}
+                    <div className="whitespace-pre-wrap break-words text-xs text-left font-mono">{truncate(fullText, 1250)}</div>
 
+                    {/* USAGE TOOLTIP */}
                     {m.type === "assistant" && m.usage && (
-                      <div className="absolute top-6 right-2 z-50 opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-slate-900 text-white text-[12px] px-2 py-1 rounded shadow-lg pointer-events-none">
+                      <div className="absolute top-6 right-2 z-50 opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-black border border-green-500 text-green-400 text-[12px] px-2 py-1 rounded pointer-events-none">
                         <div>Input Tokens: {m.usage.prompt_tokens}</div>
                         <div>Output Tokens: {m.usage.completion_tokens}</div>
                         <div>Total Tokens: {m.usage.total_tokens}</div>
@@ -398,11 +412,12 @@ export default function Home() {
               })}
 
               {loading && (
-                <div className="text-slate-400 italic">Agent is thinking…</div>
+                <div className="text-green-600 italic">Agent is thinking…</div>
               )}
             </div>
           </div>
         </div>
+
 
         {/* RIGHT PANEL (3 cols) */}
         <div className="col-span-4 min-h-0">
@@ -430,50 +445,36 @@ export default function Home() {
             </div>
 
             {/* SCROLL AREA */}
-            <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3 bg-black">
+            <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4 bg-black">
               {replMessages.map((m, i) => {
                 const isAssistant = m.type === "assistant" || m.type === "repl_call"
                 const role = m.type.toUpperCase()
                 const align = isAssistant ? "ml-auto" : "mr-auto"
                 const fullText = m.type === "repl_call" ? m.code : m.text
 
+                const styles = getMessageBg(m.type)
                 return (
                   <div
                     key={i}
-                    onClick={() =>
-                      setActiveModal({ type: "chat", role, text: fullText })
-                    }
-                    className={`
-              ${align}
-              w-fit max-w-[100%] cursor-pointer
-              border border-green-500
-              rounded-lg p-3
-              bg-black text-green-400
-              relative mt-2
-              hover:bg-green-950
-              transition-colors
-            `}
-                  >
+                    onClick={() => setActiveModal({ type: "chat", role, text: fullText })}
+                    className={`${align} w-fit max-w-[90%] cursor-pointer border rounded-lg p-3 pt-5 relative mt-2 group bg-black ${styles}`}>
                     {/* ROLE TAGS */}
-                    <div
-                      className={`absolute -top-2 ${isAssistant ? "right-2" : "left-2"
-                        } flex gap-1`}
-                    >
+
+                    <div className={`absolute -top-2 ${isAssistant ? "right-2" : "left-2"} flex gap-1`}>
+
                       {m.type === "repl_call" && m.is_sub_llm_called && (
-                        <div className="text-[10px] font-bold px-1 rounded border border-green-500 bg-black text-green-400">
-                          SUB-LLM CALL
+                        <div className={`text-[10px] font-bold px-1 rounded border bg-black ${styles}`}>
+                          SUB_LLM_CALL
                         </div>
                       )}
 
-                      <div className="text-[10px] font-bold px-1 rounded border border-green-500 bg-black text-green-400">
+                      <div className={`text-[10px] font-bold px-1 rounded border bg-black ${styles}`}>
                         {role}
                       </div>
                     </div>
 
                     {/* MESSAGE */}
-                    <div className="whitespace-pre-wrap break-words text-xs text-left text-green-400">
-                      {truncate(fullText, 1250)}
-                    </div>
+                    <div className="whitespace-pre-wrap break-words text-xs text-left font-mono">{truncate(fullText, 1250)}</div>
 
                     {/* USAGE TOOLTIP */}
                     {m.type === "assistant" && m.usage && (
@@ -494,8 +495,6 @@ export default function Home() {
             </div>
           </div>
         </div>
-
-
       </div>
 
       {/* Unified Modal (Dataset + Chat) */}

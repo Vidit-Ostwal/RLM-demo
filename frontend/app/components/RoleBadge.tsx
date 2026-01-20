@@ -17,7 +17,7 @@ export function RoleBadge({
             <div
                 className={`
           text-[10px] font-semibold uppercase tracking-wide
-          px-3 py-1 rounded border border-slate-300 cursor-help
+          px-3 py-1 rounded border cursor-help
           ${getMessageBg(role)}
           max-w-full truncate whitespace-nowrap overflow-hidden
         `}
@@ -55,10 +55,8 @@ export function RoleBadgeEnv({
             <div
                 className={`
           text-[10px] font-semibold uppercase tracking-wide
-          px-3 py-1 rounded 
-          border border-green-500
-          bg-black text-green-400
-          hover:bg-green-950
+          px-3 py-1 rounded border cursor-help
+          ${getMessageBg(role)}
           max-w-full truncate whitespace-nowrap overflow-hidden
         `}
                 title={label} // native tooltip for truncated text
