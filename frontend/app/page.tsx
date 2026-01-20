@@ -96,6 +96,9 @@ export default function Home() {
       tooltipTitle: "Assistant Message",
       tooltipDescription: "Model-generated response based on context and tools. Hover over any assistant message to view the exact tokens and cost.",
     },
+  ]
+
+  const ENV_ROLE_BADGES = [
     {
       role: "repl_call",
       label: "repl_call",
@@ -109,6 +112,7 @@ export default function Home() {
       tooltipDescription: "Execution result returned from the REPL environment.",
     },
   ]
+
 
 
   useEffect(() => {
@@ -162,11 +166,31 @@ export default function Home() {
     }
   }
 
-  function RoleBadge({ role, label, tooltipTitle, tooltipDescription }: { role: string, label: string, tooltipTitle?: string, tooltipDescription?: string }) {
+  function RoleBadge({
+    role,
+    label,
+    tooltipTitle,
+    tooltipDescription,
+  }: {
+    role: string
+    label: string
+    tooltipTitle?: string
+    tooltipDescription?: string
+  }) {
     return (
-      <div className="relative group">
+      <div className="relative group min-w-0">
         {/* Badge */}
-        <div className={`text-[10px] font-semibold uppercase tracking-wide px-3 py-1 rounded border border-slate-300 cursor-help ${getMessageBg(role)}`}>{label}</div>
+        <div
+          className={`
+          text-[10px] font-semibold uppercase tracking-wide
+          px-3 py-1 rounded border border-slate-300 cursor-help
+          ${getMessageBg(role)}
+          max-w-full truncate whitespace-nowrap overflow-hidden
+        `}
+          title={label} // native tooltip for truncated text
+        >
+          {label}
+        </div>
 
         {/* Tooltip */}
         {(tooltipTitle || tooltipDescription) && (
@@ -178,7 +202,6 @@ export default function Home() {
       </div>
     )
   }
-
 
   function getMessageBg(type: string) {
     switch (type) {
@@ -431,78 +454,120 @@ export default function Home() {
         </div>
       </div>
 
-      {/* Chat container */}
-      <div className={`min-h-0 mb-4 transition-all duration-300 ${chatExpanded ? "fixed inset-0 z-50 p-6 bg-slate-100" : "flex-1 px-24"}`}>
-        <div className="border border-slate-300 rounded-xl bg-white shadow-sm h-full flex flex-col min-h-0">
+      {/* OUTER WRAPPER (this expands) */}
+      <div
+        className={`grid grid-cols-10 gap-4 min-h-0 transition-all duration-300 ${chatExpanded
+          ? "fixed inset-0 z-50 p-6 bg-slate-100"
+          : "relative"
+          }`}
+      >
 
-          {/* Header (fixed) */}
-          <div className="px-4 py-2 border-b border-slate-200 shrink-0 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-semibold text-slate-600 uppercase tracking-wide">
-                Conversation Trace
-              </span>
+        {/* LEFT: CHAT (7 cols) */}
+        <div className="col-span-7 min-h-0">
+          <div className="border border-slate-300 rounded-xl bg-white shadow-sm h-full flex flex-col min-h-0">
 
-              <div className="ml-6 flex items-center gap-3 normal-case font-normal tracking-wide">
-                {ROLE_BADGES.map((badge) => (
-                  <RoleBadge key={badge.role} {...badge} />
-                ))}
+            {/* HEADER */}
+            <div className="px-4 py-2 border-b border-slate-200 shrink-0 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-semibold text-slate-600 uppercase tracking-wide">
+                  Conversation Trace
+                </span>
+
+                <div className="ml-3 flex items-center gap-2 normal-case font-normal tracking-wide min-w-0">
+                  {ROLE_BADGES.map((badge) => (
+                    <RoleBadge key={badge.role} {...badge} />
+                  ))}
+                </div>
               </div>
+
+              <ChatExpandToggle
+                expanded={chatExpanded}
+                disabled={visibleMessages.length === 0}
+                onToggle={() => setChatExpanded(!chatExpanded)}
+              />
             </div>
 
-            <ChatExpandToggle
-              expanded={chatExpanded}
-              disabled={visibleMessages.length === 0}
-              onToggle={() => setChatExpanded(!chatExpanded)}
-            />
-          </div>
+            {/* SCROLL AREA */}
+            <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3">
+              {visibleMessages.map((m, i) => {
+                const isAssistant = m.type === "assistant" || m.type === "repl_call"
+                const role = m.type.toUpperCase()
+                const align = isAssistant ? "ml-auto" : "mr-auto"
+                const bg = getMessageBg(m.type)
+                const fullText = m.type === "repl_call" ? m.code : m.text
 
-          {/* Scrollable messages (ONLY this scrolls) */}
-          <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3">
-            {visibleMessages.map((m, i) => {
-              const isAssistant = m.type === "assistant" || m.type === "repl_call"
-              const role = m.type.toUpperCase()
-              const align = isAssistant ? "ml-auto" : "mr-auto"
-              const bg = getMessageBg(m.type);
-              const fullText = m.type === "repl_call" ? m.code : m.text
-
-              return (
-                <div
-                  key={i}
-                  onClick={() => setActiveModal({ type: "chat", role, text: fullText })}
-                  className={`${align} w-fit max-w-[70%] cursor-pointer border border-slate-300 rounded-lg p-3 ${bg} relative mt-2 group`}
-                >
-                  <div className={`absolute -top-2 ${isAssistant ? "right-2" : "left-2"} flex gap-1`}>
-                    {m.type === "repl_call" && m.is_sub_llm_called && (
+                return (
+                  <div
+                    key={i}
+                    onClick={() =>
+                      setActiveModal({ type: "chat", role, text: fullText })
+                    }
+                    className={`${align} w-fit max-w-[70%] cursor-pointer border border-slate-300 rounded-lg p-3 ${bg} relative mt-2 group`}
+                  >
+                    <div
+                      className={`absolute -top-2 ${isAssistant ? "right-2" : "left-2"
+                        } flex gap-1`}
+                    >
+                      {m.type === "repl_call" && m.is_sub_llm_called && (
+                        <div className={`text-[10px] font-bold px-1 rounded border border-slate-300 ${bg}`}>
+                          SUB-LLM CALL
+                        </div>
+                      )}
                       <div className={`text-[10px] font-bold px-1 rounded border border-slate-300 ${bg}`}>
-                        SUB-LLM CALL
+                        {role}
+                      </div>
+                    </div>
+
+                    <div className="whitespace-pre-wrap break-words text-sm text-left">
+                      {truncate(fullText, 1250)}
+                    </div>
+
+                    {m.type === "assistant" && m.usage && (
+                      <div className="absolute top-6 right-2 z-50 opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-slate-900 text-white text-[12px] px-2 py-1 rounded shadow-lg pointer-events-none">
+                        <div>Input Tokens: {m.usage.prompt_tokens}</div>
+                        <div>Output Tokens: {m.usage.completion_tokens}</div>
+                        <div>Total Tokens: {m.usage.total_tokens}</div>
+                        <div>Cost: ${m.usage.cost}</div>
                       </div>
                     )}
-                    <div className={`text-[10px] font-bold px-1 rounded border border-slate-300 ${bg}`}>
-                      {role}
-                    </div>
                   </div>
+                )
+              })}
 
-                  <div className="whitespace-pre-wrap break-words text-sm text-left">
-                    {truncate(fullText, 1250)}
-                  </div>
-
-                  {m.type === "assistant" && m.usage && (
-                    <div className="absolute top-6 right-2 z-50 opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-slate-900 text-white text-[12px] px-2 py-1 rounded shadow-lg pointer-events-none">
-                      <div>Input Tokens: {m.usage.prompt_tokens}</div>
-                      <div>Output Tokens: {m.usage.completion_tokens}</div>
-                      <div>Total Tokens: {m.usage.total_tokens}</div>
-                      <div>Cost: ${m.usage.cost}</div>
-                    </div>
-                  )}
-                </div>
-              )
-            })}
-
-            {loading && (
-              <div className="text-slate-400 italic">Agent is thinking…</div>
-            )}
+              {loading && (
+                <div className="text-slate-400 italic">Agent is thinking…</div>
+              )}
+            </div>
           </div>
         </div>
+
+        {/* RIGHT PANEL (3 cols) */}
+        <div className="col-span-3 min-h-0">
+          <div className="border border-slate-300 rounded-xl bg-white shadow-sm h-full flex flex-col min-h-0">
+
+            {/* HEADER */}
+            <div className="px-4 py-2 border-b border-slate-200 shrink-0 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-semibold text-slate-600 uppercase tracking-wide">
+                  REPL ENVIRONMENT
+                </span>
+
+                <div className="ml-3 flex items-center gap-2 normal-case font-normal tracking-wide">
+                  {ENV_ROLE_BADGES.map((badge) => (
+                    <RoleBadge key={badge.role} {...badge} />
+                  ))}
+                </div>
+              </div>
+
+              <ChatExpandToggle
+                expanded={chatExpanded}
+                disabled={visibleMessages.length === 0}
+                onToggle={() => setChatExpanded(!chatExpanded)}
+              />
+            </div>
+          </div>
+        </div>
+
       </div>
 
       {/* Unified Modal (Dataset + Chat) */}
