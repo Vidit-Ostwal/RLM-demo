@@ -2,33 +2,13 @@
 
 import { useRef, useState, useEffect } from "react"
 import { ChatExpandToggle } from "./components/ChatExpandToggle"
-import { UIMessage, DatasetSample, ApiResponse } from "./types"
-
-/* ---------------- TYPEWRITER EFFECT ---------------- */
-
-function useTypewriter(text: string | undefined, speed = 6) {
-  const [displayed, setDisplayed] = useState("")
-
-  useEffect(() => {
-    if (!text) {
-      setDisplayed("")
-      return
-    }
-
-    let i = 0
-    setDisplayed("")
-
-    const interval = setInterval(() => {
-      i++
-      setDisplayed(text.slice(0, i))
-      if (i >= text.length) clearInterval(interval)
-    }, speed)
-
-    return () => clearInterval(interval)
-  }, [text])
-
-  return displayed
-}
+import { UIMessage, DatasetSample, ApiResponse, RawMessage } from "./types"
+import { ROLE_BADGES, ENV_ROLE_BADGES } from "./components/constants"
+import { getMessageBg } from "./components/getMessageBg"
+import { truncate } from "./utils/truncate"
+import { transformTrace } from "./utils/transformTrace"
+import { RoleBadge } from "./components/RoleBadge"
+import { sleep } from "./utils/sleep"
 
 /* --------------------------------------------------- */
 
@@ -54,81 +34,22 @@ export default function Home() {
     | null
   >(null)
 
-
-
-  const ROLE_BADGES = [
-    {
-      role: "system",
-      label: "system",
-      tooltipTitle: "System Prompt",
-      tooltipDescription:
-        "The system prompt defines the model's role, task, and constraints. It guides the model's behavior and ensures consistent responses.",
-    },
-    {
-      role: "user",
-      label: "user",
-      tooltipTitle: "User Message",
-      tooltipDescription: "Direct input provided by the user.",
-    },
-    {
-      role: "assistant",
-      label: "assistant",
-      tooltipTitle: "Assistant Message",
-      tooltipDescription: "Model-generated response based on context and tools. Hover over any assistant message to view the exact tokens and cost.",
-    },
-  ]
-
-  const ENV_ROLE_BADGES = [
-    {
-      role: "repl_call",
-      label: "repl_call",
-      tooltipTitle: "REPL Call",
-      tooltipDescription: "Code execution step initiated by the model in the assistant message to be executed in the REPL environment.",
-    },
-    {
-      role: "repl_env_output",
-      label: "repl_env_output",
-      tooltipTitle: "REPL Output",
-      tooltipDescription: "Execution result returned from the REPL environment.",
-    },
-  ]
-
   useEffect(() => {
     if (initialLoadRef.current) return
     initialLoadRef.current = true
     shuffleDataset(10)
   }, [])
 
-  useEffect(() => {
-    if (!messages.length) {
-      setVisibleMessages([])
-      setReplMessages([])
-      return
-    }
 
-    // reset everything
-    setVisibleMessages([])
-    setReplMessages([])
-    indexRef.current = 0
-    pausedRef.current = false
-
-    intervalRef.current = setInterval(() => {
-      // ⛔ pause gate
+  async function runUntilPause() {
+    while (true) {
       if (pausedRef.current) return
 
       const i = indexRef.current
       const msg = messages[i]
+      if (!msg) return
 
-      // end of stream
-      if (!msg) {
-        if (intervalRef.current) {
-          clearInterval(intervalRef.current)
-          intervalRef.current = null
-        }
-        return
-      }
-
-      // 👇 REPL INTERACTION (pause here)
+      // 👇 pause point
       if (msg.type === "repl_call") {
         const output = messages[i + 1]
 
@@ -136,34 +57,39 @@ export default function Home() {
           const combinedMsg: UIMessage = {
             type: "repl_env_interaction",
             messages: [msg, output],
-            text: "REPL ENVIRONMENT INTERACTION",
+            text: "ADD REPL ENVIRONMENT INTERACTION TO THE CONTEXT AND CONTINUE",
           }
 
           setVisibleMessages(prev => [...prev, combinedMsg])
-
+          setReplMessages([msg, output])
           indexRef.current += 2
-          pausedRef.current = true // ⛔ STOP STREAMING
+          pausedRef.current = true
           return
         }
       }
 
-      // 👇 normal message
       if (msg.type !== "repl_env_output") {
         setVisibleMessages(prev => [...prev, msg])
       }
 
       indexRef.current += 1
-    }, 500)
+      await sleep(1000)
+    }
+  }
 
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current)
+
+  useEffect(() => {
+    setVisibleMessages([])
+    setReplMessages([])
+    indexRef.current = 0
+    pausedRef.current = false
+
+    // auto-start first step
+    if (messages.length) {
+      runUntilPause()
     }
   }, [messages])
 
-  function truncate(text: string | undefined, max = 650) {
-    if (!text) return ""
-    return text.length > max ? text.slice(0, max) + "......." : text
-  }
 
   async function shuffleDataset(index?: number) {
     if (shuffleLoading) return
@@ -184,104 +110,6 @@ export default function Home() {
     } finally {
       setShuffleLoading(false)
     }
-  }
-
-  function RoleBadge({
-    role,
-    label,
-    tooltipTitle,
-    tooltipDescription,
-  }: {
-    role: string
-    label: string
-    tooltipTitle?: string
-    tooltipDescription?: string
-  }) {
-    return (
-      <div className="relative group min-w-0">
-        {/* Badge */}
-        <div
-          className={`
-          text-[10px] font-semibold uppercase tracking-wide
-          px-3 py-1 rounded border border-slate-300 cursor-help
-          ${getMessageBg(role)}
-          max-w-full truncate whitespace-nowrap overflow-hidden
-        `}
-          title={label} // native tooltip for truncated text
-        >
-          {label}
-        </div>
-
-        {/* Tooltip */}
-        {(tooltipTitle || tooltipDescription) && (
-          <div className="pointer-events-none absolute left-1/2 -translate-x-1/2 top-full mt-2 w-[450px] opacity-0 translate-y-1 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-200 bg-white border border-slate-300 shadow-lg rounded-lg p-3 text-xs text-slate-700 z-50">
-            {tooltipTitle && <div className="font-semibold mb-1">{tooltipTitle}</div>}
-            {tooltipDescription && <p className="leading-relaxed">{tooltipDescription}</p>}
-          </div>
-        )}
-      </div>
-    )
-  }
-
-  function getMessageBg(type: string) {
-    switch (type) {
-      case "user":
-        return "bg-blue-100"
-      case "assistant":
-        return "bg-slate-200"
-      case "repl_call":
-      case "repl_env_output":
-        return "bg-black text-green-400"
-      default:
-        return "bg-slate-900 text-slate-100"
-    }
-  }
-
-  async function transformTrace(
-    raw?: RawMessage[]
-  ): Promise<UIMessage[]> {
-    if (!Array.isArray(raw)) {
-      console.warn("transformTrace: raw is not array", raw)
-      return []
-    }
-
-    const out: UIMessage[] = []
-
-    for (const msg of raw) {
-      const content = msg.content ?? ""
-
-      // assistant messages with code blocks
-      if (
-        msg.role === "assistant" &&
-        Array.isArray(msg.code_blocks) &&
-        msg.code_blocks.length > 0
-      ) {
-        out.push({ type: "assistant", text: content, usage: msg.usage })
-
-        for (const code of msg.code_blocks) {
-          const is_sub_llm_called = code.includes("llm_query") || code.includes("llm_query_batched")
-          out.push({ type: "repl_call", code, is_sub_llm_called })
-        }
-        continue
-      }
-
-      // user messages with observed code output
-      if (
-        msg.role === "user" &&
-        typeof msg.code_blocks_observed === "string" &&
-        msg.code_blocks_observed.length > 0
-      ) {
-        out.push({ type: "repl_env_output", text: msg.code_blocks_observed })
-        out.push({ type: "user", text: content })
-        continue
-      }
-
-      // default case
-      out.push({ type: msg.role, text: content })
-    }
-    console.log("transformTrace out:", out)
-
-    return out
   }
 
   async function sendQuery() {
@@ -322,15 +150,8 @@ export default function Home() {
           ? dataset?.query
           : dataset?.expected_answer
 
-  // Only animate chat
-  const animatedChatText = useTypewriter(
-    activeModal?.type === "chat" ? activeModal.text : ""
-  )
-
   // What the UI should render
   const displayText = modalText
-  // activeModal?.type === "chat" ? animatedChatText : modalText
-
 
   return (
     <main className="h-screen w-screen bg-slate-100 text-slate-900 flex flex-col p-6">
@@ -376,7 +197,7 @@ export default function Home() {
         <div className="grid grid-cols-10 gap-6 w-full h-[200px]">
 
           {/* ================= CONTEXT ================= */}
-          <div className="col-span-7 relative group h-full">
+          <div className="col-span-6 relative group h-full">
             <div
               onClick={() => dataset && setActiveModal({ type: "context" })}
               className="h-full flex flex-col bg-white border border-slate-300 rounded-lg p-4 overflow-hidden cursor-pointer hover:shadow transition"
@@ -410,7 +231,7 @@ export default function Home() {
           </div>
 
           {/* ================= RIGHT COLUMN ================= */}
-          <div className="col-span-3 flex flex-col gap-4 h-full">
+          <div className="col-span-4 flex flex-col gap-4 h-full">
 
             {/* ================= USER QUERY (80%) ================= */}
             <div className="relative group flex-[4] h-full">
@@ -483,7 +304,7 @@ export default function Home() {
       >
 
         {/* LEFT: CHAT (7 cols) */}
-        <div className="col-span-7 min-h-0">
+        <div className="col-span-6 min-h-0">
           <div className="border border-slate-300 rounded-xl bg-white shadow-sm h-full flex flex-col min-h-0">
 
             {/* HEADER */}
@@ -500,11 +321,24 @@ export default function Home() {
                 </div>
               </div>
 
-              <ChatExpandToggle
-                expanded={chatExpanded}
-                disabled={visibleMessages.length === 0}
-                onToggle={() => setChatExpanded(!chatExpanded)}
-              />
+              <div className="flex items-center gap-3">
+                {pausedRef.current && (
+                  <div className="flex items-center gap-2 px-3 py-1 text-[10px] font-semibold uppercase tracking-wide rounded border border-amber-300 bg-amber-50 text-amber-700">
+                    <span className="relative flex h-2 w-2">
+                      <span className="animate-pulse inline-flex h-full w-full rounded-full bg-amber-500" />
+                    </span>
+                    <span className="whitespace-nowrap">
+                      Paused · click on REPL Interaction button below
+                    </span>
+                  </div>
+                )}
+
+                <ChatExpandToggle
+                  expanded={chatExpanded}
+                  disabled={visibleMessages.length === 0}
+                  onToggle={() => setChatExpanded(!chatExpanded)}
+                />
+              </div>
             </div>
 
             {/* SCROLL AREA */}
@@ -521,10 +355,17 @@ export default function Home() {
                     <div
                       key={i}
                       onClick={() => {
-                        setReplMessages(m.messages)
-                        pausedRef.current = false // ▶ RESUME
+                        setReplMessages([])
+                        setVisibleMessages(prev => {
+                          const last = prev.at(-1)
+                          if (last?.type !== "repl_env_interaction") return prev
+                          return [...prev.slice(0, -1), ...last.messages]
+                        })
+
+                        pausedRef.current = false
+                        runUntilPause()
                       }}
-                      className="mx-auto w-fit cursor-pointer border border-slate-300 rounded-full px-4 py-1 bg-slate-50 text-[10px] font-medium text-slate-500 hover:bg-slate-100 transition-colors uppercase tracking-wider"
+                      className="mx-auto w-fit cursor-pointer border border-slate-800 rounded-full px-4 py-1 bg-black text-[10px] font-medium text-green-400 hover:bg-slate-900 transition-colors uppercase tracking-wider"
                     >
                       {m.text}
                     </div>
@@ -535,7 +376,7 @@ export default function Home() {
                   <div
                     key={i}
                     onClick={() => setActiveModal({ type: "chat", role, text: fullText })}
-                    className={`${align} w-fit max-w-[70%] cursor-pointer border border-slate-300 rounded-lg p-3 ${bg} relative mt-2 group`}
+                    className={`${align} w-fit max-w-[90%] cursor-pointer border border-slate-300 rounded-lg p-3 ${bg} relative mt-2 group`}
                   >
                     <div className={`absolute -top-2 ${isAssistant ? "right-2" : "left-2"} flex gap-1`}>
                       {m.type === "repl_call" && m.is_sub_llm_called && (<div className={`text-[10px] font-bold px-1 rounded border border-slate-300 ${bg}`}> SUB-LLM CALL </div>)}
@@ -564,7 +405,7 @@ export default function Home() {
         </div>
 
         {/* RIGHT PANEL (3 cols) */}
-        <div className="col-span-3 min-h-0">
+        <div className="col-span-4 min-h-0">
           <div className="border border-slate-300 rounded-xl bg-white shadow-sm h-full flex flex-col min-h-0">
 
             {/* HEADER */}
@@ -603,7 +444,7 @@ export default function Home() {
                     onClick={() =>
                       setActiveModal({ type: "chat", role, text: fullText })
                     }
-                    className={`${align} w-fit max-w-[70%] cursor-pointer border border-slate-300 rounded-lg p-3 ${bg} relative mt-2 group`}
+                    className={`${align} w-fit max-w-[100%] cursor-pointer border border-slate-300 rounded-lg p-3 ${bg} relative mt-2 group`}
                   >
                     <div
                       className={`absolute -top-2 ${isAssistant ? "right-2" : "left-2"
@@ -619,7 +460,7 @@ export default function Home() {
                       </div>
                     </div>
 
-                    <div className="whitespace-pre-wrap break-words text-sm text-left">
+                    <div className="whitespace-pre-wrap break-words text-xs text-left">
                       {truncate(fullText, 1250)}
                     </div>
 
