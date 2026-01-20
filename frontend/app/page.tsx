@@ -100,7 +100,8 @@ export default function Home() {
       const targetIndex = (index ?? Math.floor(Math.random() * 450) + 1) % 15
       datasetIndexRef.current = targetIndex
 
-      const res = await fetch(`http://localhost:8000/get-dataset?index=${targetIndex}`)
+      // const res = await fetch(`http://localhost:8000/get-dataset?index=${targetIndex}`)
+      const res = await fetch(`/api/get-dataset?index=${targetIndex}`)
       const data = await res.json()
 
       setDataset(data)
@@ -119,7 +120,14 @@ export default function Home() {
     setLoading(true)
 
     try {
-      const res = await fetch("http://localhost:8000/query", {
+
+      // const res = await fetch("http://localhost:8000/query", {
+      //   method: "POST",
+      //   headers: { "Content-Type": "application/json" },
+      //   body: JSON.stringify({ index: datasetIndexRef.current }),
+      // })
+
+      const res = await fetch("/api/query", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ index: datasetIndexRef.current }),
