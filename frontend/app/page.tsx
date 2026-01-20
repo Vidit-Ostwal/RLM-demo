@@ -2,31 +2,7 @@
 
 import { useRef, useState, useEffect } from "react"
 import { ChatExpandToggle } from "./components/ChatExpandToggle"
-
-type RawMessage = {
-  role: "system" | "assistant" | "user"
-  content: string
-  code_blocks?: string[]
-  code_blocks_observed?: string
-  usage?: any
-}
-
-type ApiResponse = {
-  messages: RawMessage[]
-}
-
-type UIMessage =
-  | { type: "system"; text: string }
-  | { type: "assistant"; text: string; usage?: any }
-  | { type: "user"; text: string }
-  | { type: "repl_call"; code: string; is_sub_llm_called: boolean }
-  | { type: "repl_env_output"; text: string }
-
-type DatasetSample = {
-  context: string
-  query: string
-  expected_answer: string
-}
+import { UIMessage, DatasetSample, ApiResponse } from "./types"
 
 /* ---------------- TYPEWRITER EFFECT ---------------- */
 
@@ -60,11 +36,17 @@ export default function Home() {
   const [input, setInput] = useState("")
   const [messages, setMessages] = useState<UIMessage[]>([])
   const [visibleMessages, setVisibleMessages] = useState<UIMessage[]>([])
+  const [replMessages, setReplMessages] = useState<UIMessage[]>([])
   const [loading, setLoading] = useState(false)
   const [charLimit, setCharLimit] = useState(650)
   const [chatExpanded, setChatExpanded] = useState(false)
-
   const [dataset, setDataset] = useState<DatasetSample | null>(null)
+  const [shuffleLoading, setShuffleLoading] = useState(false)
+  const datasetIndexRef = useRef<number | null>(null)
+  const initialLoadRef = useRef(false)
+  const indexRef = useRef(0)
+  const pausedRef = useRef(false)
+  const intervalRef = useRef<NodeJS.Timeout | null>(null)
 
   const [activeModal, setActiveModal] = useState<
     | { type: "context" | "query" | "expected_answer" }
@@ -72,9 +54,7 @@ export default function Home() {
     | null
   >(null)
 
-  const [shuffleLoading, setShuffleLoading] = useState(false)
-  const datasetIndexRef = useRef<number | null>(null)
-  const initialLoadRef = useRef(false)
+
 
   const ROLE_BADGES = [
     {
@@ -113,37 +93,77 @@ export default function Home() {
     },
   ]
 
-
-
   useEffect(() => {
     if (initialLoadRef.current) return
     initialLoadRef.current = true
     shuffleDataset(10)
   }, [])
 
+  useEffect(() => {
+    if (!messages.length) {
+      setVisibleMessages([])
+      setReplMessages([])
+      return
+    }
+
+    // reset everything
+    setVisibleMessages([])
+    setReplMessages([])
+    indexRef.current = 0
+    pausedRef.current = false
+
+    intervalRef.current = setInterval(() => {
+      // ⛔ pause gate
+      if (pausedRef.current) return
+
+      const i = indexRef.current
+      const msg = messages[i]
+
+      // end of stream
+      if (!msg) {
+        if (intervalRef.current) {
+          clearInterval(intervalRef.current)
+          intervalRef.current = null
+        }
+        return
+      }
+
+      // 👇 REPL INTERACTION (pause here)
+      if (msg.type === "repl_call") {
+        const output = messages[i + 1]
+
+        if (output?.type === "repl_env_output") {
+          const combinedMsg: UIMessage = {
+            type: "repl_env_interaction",
+            messages: [msg, output],
+            text: "REPL ENVIRONMENT INTERACTION",
+          }
+
+          setVisibleMessages(prev => [...prev, combinedMsg])
+
+          indexRef.current += 2
+          pausedRef.current = true // ⛔ STOP STREAMING
+          return
+        }
+      }
+
+      // 👇 normal message
+      if (msg.type !== "repl_env_output") {
+        setVisibleMessages(prev => [...prev, msg])
+      }
+
+      indexRef.current += 1
+    }, 500)
+
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current)
+    }
+  }, [messages])
+
   function truncate(text: string | undefined, max = 650) {
     if (!text) return ""
     return text.length > max ? text.slice(0, max) + "......." : text
   }
-
-  /* ---- Stream messages one by one ---- */
-  useEffect(() => {
-    if (!messages.length) {
-      setVisibleMessages([])
-      return
-    }
-
-    setVisibleMessages([])
-    let i = 0
-
-    const interval = setInterval(() => {
-      i++
-      setVisibleMessages(messages.slice(0, i))
-      if (i >= messages.length) clearInterval(interval)
-    }, 500)
-
-    return () => clearInterval(interval)
-  }, [messages])
 
   async function shuffleDataset(index?: number) {
     if (shuffleLoading) return
@@ -456,7 +476,7 @@ export default function Home() {
 
       {/* OUTER WRAPPER (this expands) */}
       <div
-        className={`grid grid-cols-10 gap-4 min-h-0 transition-all duration-300 ${chatExpanded
+        className={`grid grid-cols-10 gap-6 min-h-0 transition-all duration-300 ${chatExpanded
           ? "fixed inset-0 z-50 p-6 bg-slate-100"
           : "relative"
           }`}
@@ -490,6 +510,87 @@ export default function Home() {
             {/* SCROLL AREA */}
             <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3">
               {visibleMessages.map((m, i) => {
+                const isAssistant = m.type === "assistant" || m.type === "repl_call"
+                const role = m.type.toUpperCase()
+                const align = isAssistant ? "ml-auto" : "mr-auto"
+                const bg = getMessageBg(m.type)
+                const fullText = m.type === "repl_call" ? m.code : m.text
+
+                if (m.type === "repl_env_interaction") {
+                  return (
+                    <div
+                      key={i}
+                      onClick={() => {
+                        setReplMessages(m.messages)
+                        pausedRef.current = false // ▶ RESUME
+                      }}
+                      className="mx-auto w-fit cursor-pointer border border-slate-300 rounded-full px-4 py-1 bg-slate-50 text-[10px] font-medium text-slate-500 hover:bg-slate-100 transition-colors uppercase tracking-wider"
+                    >
+                      {m.text}
+                    </div>
+                  )
+                }
+
+                return (
+                  <div
+                    key={i}
+                    onClick={() => setActiveModal({ type: "chat", role, text: fullText })}
+                    className={`${align} w-fit max-w-[70%] cursor-pointer border border-slate-300 rounded-lg p-3 ${bg} relative mt-2 group`}
+                  >
+                    <div className={`absolute -top-2 ${isAssistant ? "right-2" : "left-2"} flex gap-1`}>
+                      {m.type === "repl_call" && m.is_sub_llm_called && (<div className={`text-[10px] font-bold px-1 rounded border border-slate-300 ${bg}`}> SUB-LLM CALL </div>)}
+                      <div className={`text-[10px] font-bold px-1 rounded border border-slate-300 ${bg}`}>{role}</div>
+                    </div>
+
+                    <div className="whitespace-pre-wrap break-words text-sm text-left"> {truncate(fullText, 1250)} </div>
+
+                    {m.type === "assistant" && m.usage && (
+                      <div className="absolute top-6 right-2 z-50 opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-slate-900 text-white text-[12px] px-2 py-1 rounded shadow-lg pointer-events-none">
+                        <div>Input Tokens: {m.usage.prompt_tokens}</div>
+                        <div>Output Tokens: {m.usage.completion_tokens}</div>
+                        <div>Total Tokens: {m.usage.total_tokens}</div>
+                        <div>Cost: ${m.usage.cost}</div>
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+
+              {loading && (
+                <div className="text-slate-400 italic">Agent is thinking…</div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* RIGHT PANEL (3 cols) */}
+        <div className="col-span-3 min-h-0">
+          <div className="border border-slate-300 rounded-xl bg-white shadow-sm h-full flex flex-col min-h-0">
+
+            {/* HEADER */}
+            <div className="px-4 py-2 border-b border-slate-200 shrink-0 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-semibold text-slate-600 uppercase tracking-wide">
+                  REPL ENVIRONMENT
+                </span>
+
+                <div className="ml-3 flex items-center gap-2 normal-case font-normal tracking-wide">
+                  {ENV_ROLE_BADGES.map((badge) => (
+                    <RoleBadge key={badge.role} {...badge} />
+                  ))}
+                </div>
+              </div>
+
+              <ChatExpandToggle
+                expanded={chatExpanded}
+                disabled={visibleMessages.length === 0}
+                onToggle={() => setChatExpanded(!chatExpanded)}
+              />
+            </div>
+
+            {/* SCROLL AREA */}
+            <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3">
+              {replMessages.map((m, i) => {
                 const isAssistant = m.type === "assistant" || m.type === "repl_call"
                 const role = m.type.toUpperCase()
                 const align = isAssistant ? "ml-auto" : "mr-auto"
@@ -537,33 +638,6 @@ export default function Home() {
               {loading && (
                 <div className="text-slate-400 italic">Agent is thinking…</div>
               )}
-            </div>
-          </div>
-        </div>
-
-        {/* RIGHT PANEL (3 cols) */}
-        <div className="col-span-3 min-h-0">
-          <div className="border border-slate-300 rounded-xl bg-white shadow-sm h-full flex flex-col min-h-0">
-
-            {/* HEADER */}
-            <div className="px-4 py-2 border-b border-slate-200 shrink-0 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-semibold text-slate-600 uppercase tracking-wide">
-                  REPL ENVIRONMENT
-                </span>
-
-                <div className="ml-3 flex items-center gap-2 normal-case font-normal tracking-wide">
-                  {ENV_ROLE_BADGES.map((badge) => (
-                    <RoleBadge key={badge.role} {...badge} />
-                  ))}
-                </div>
-              </div>
-
-              <ChatExpandToggle
-                expanded={chatExpanded}
-                disabled={visibleMessages.length === 0}
-                onToggle={() => setChatExpanded(!chatExpanded)}
-              />
             </div>
           </div>
         </div>
