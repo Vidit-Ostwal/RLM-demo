@@ -12,14 +12,14 @@ export function RoleBadge({
     tooltipDescription?: string
 }) {
     return (
-        <div className="relative group min-w-0">
+        <div className="relative group min-w-0 shrink-0">
             {/* Badge */}
             <div
                 className={`
           text-[10px] font-semibold uppercase tracking-wide
-          px-3 py-1 rounded border cursor-help
+          px-3 py-1 rounded border cursor-help transition-colors
           ${getMessageBg(role)}
-          max-w-full truncate whitespace-nowrap overflow-hidden
+          whitespace-nowrap
         `}
                 title={label} // native tooltip for truncated text
             >
@@ -28,8 +28,8 @@ export function RoleBadge({
 
             {/* Tooltip */}
             {(tooltipTitle || tooltipDescription) && (
-                <div className="pointer-events-none absolute left-1/2 -translate-x-1/2 top-full mt-2 w-[450px] opacity-0 translate-y-1 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-200 bg-white border border-slate-300 shadow-lg rounded-lg p-3 text-xs text-slate-700 z-50">
-                    {tooltipTitle && <div className="font-semibold mb-1">{tooltipTitle}</div>}
+                <div className="pointer-events-none absolute left-1/2 -translate-x-1/2 top-full mt-2 w-[450px] opacity-0 translate-y-1 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-200 bg-slate-900 border border-emerald-500/30 shadow-2xl shadow-emerald-500/20 rounded-lg p-3 text-xs text-slate-300 z-50">
+                    {tooltipTitle && <div className="font-semibold mb-1 text-emerald-400">{tooltipTitle}</div>}
                     {tooltipDescription && <p className="leading-relaxed">{tooltipDescription}</p>}
                 </div>
             )}
@@ -50,14 +50,14 @@ export function RoleBadgeEnv({
     tooltipDescription?: string
 }) {
     return (
-        <div className="relative group min-w-0">
+        <div className="relative group min-w-0 shrink-0">
             {/* Badge */}
             <div
                 className={`
           text-[10px] font-semibold uppercase tracking-wide
-          px-3 py-1 rounded border cursor-help
+          px-3 py-1 rounded border cursor-help transition-colors
           ${getMessageBg(role)}
-          max-w-full truncate whitespace-nowrap overflow-hidden
+          whitespace-nowrap
         `}
                 title={label} // native tooltip for truncated text
             >
@@ -66,8 +66,8 @@ export function RoleBadgeEnv({
 
             {/* Tooltip */}
             {(tooltipTitle || tooltipDescription) && (
-                <div className="pointer-events-none absolute left-1/2 -translate-x-1/2 top-full mt-2 w-[450px] opacity-0 translate-y-1 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-200 bg-white border border-slate-300 shadow-lg rounded-lg p-3 text-xs text-slate-700 z-50">
-                    {tooltipTitle && <div className="font-semibold mb-1">{tooltipTitle}</div>}
+                <div className="pointer-events-none absolute left-1/2 -translate-x-1/2 top-full mt-2 w-[450px] opacity-0 translate-y-1 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-200 bg-slate-900 border border-emerald-500/30 shadow-2xl shadow-emerald-500/20 rounded-lg p-3 text-xs text-slate-300 z-50">
+                    {tooltipTitle && <div className="font-semibold mb-1 text-emerald-400">{tooltipTitle}</div>}
                     {tooltipDescription && <p className="leading-relaxed">{tooltipDescription}</p>}
                 </div>
             )}
