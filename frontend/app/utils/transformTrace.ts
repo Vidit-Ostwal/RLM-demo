@@ -19,7 +19,7 @@ export async function transformTrace(
             Array.isArray(msg.code_blocks) &&
             msg.code_blocks.length > 0
         ) {
-            out.push({ type: "assistant", text: content, usage: msg.usage })
+            out.push({ type: "assistant message", text: content, usage: msg.usage })
 
             for (const code of msg.code_blocks) {
                 const is_sub_llm_called = code.includes("llm_query") || code.includes("llm_query_batched")
@@ -35,12 +35,14 @@ export async function transformTrace(
             msg.code_blocks_observed.length > 0
         ) {
             out.push({ type: "repl_env_output", text: msg.code_blocks_observed })
-            out.push({ type: "user", text: content })
+            out.push({ type: "user message", text: content })
             continue
         }
 
         // default case
-        out.push({ type: msg.role, text: content })
+        if (msg.role === "system") {
+            out.push({ type: "system prompt", text: content })
+        }
     }
     console.log("transformTrace out:", out)
 

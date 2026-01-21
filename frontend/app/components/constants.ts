@@ -1,20 +1,20 @@
 export const ROLE_BADGES = [
     {
-        role: "system",
-        label: "system",
+        role: "system prompt",
+        label: "system prompt",
         tooltipTitle: "System Prompt",
         tooltipDescription:
             "The system prompt defines the model's role, task, and constraints. It guides the model's behavior and ensures consistent responses.",
     },
     {
-        role: "user",
-        label: "user",
+        role: "user message",
+        label: "user message",
         tooltipTitle: "User Message",
         tooltipDescription: "Direct input provided by the user.",
     },
     {
-        role: "assistant",
-        label: "assistant",
+        role: "assistant message",
+        label: "assistant message",
         tooltipTitle: "Assistant Message",
         tooltipDescription:
             "Model-generated response based on context and tools. Hover over any assistant message to view the exact tokens and cost.",

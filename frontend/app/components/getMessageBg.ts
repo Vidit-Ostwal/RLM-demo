@@ -1,10 +1,10 @@
 export function getMessageBg(type: string) {
     switch (type) {
-        case "system":
+        case "system prompt":
             return "border-purple-500 text-purple-400 hover:bg-purple-950"
-        case "user":
+        case "user message":
             return "border-cyan-500 text-cyan-400 hover:bg-cyan-950"
-        case "assistant":
+        case "assistant message":
             return "border-green-500 text-green-400 hover:bg-green-950"
         case "repl_call":
         case "sub_llm_call":
