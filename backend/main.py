@@ -18,7 +18,7 @@ DATASET_SUBSET = os.getenv("DATASET_SUBSET")
 DATASET_SPLIT = os.getenv("DATASET_SPLIT")
 EXAMPLE_INDEX = os.getenv("EXAMPLE_INDEX")
 MAX_ITERATIONS = os.getenv("MAX_ITERATIONS")
-CUTOFF_INDEX = int(os.getenv("CUTOFF_INDEX", 30))
+CUTOFF_INDEX = int(os.getenv("CUTOFF_INDEX", 15))
 
 app = FastAPI()
 
