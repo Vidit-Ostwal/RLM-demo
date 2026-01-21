@@ -89,7 +89,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pathlib import Path
 import os, json
-from backend.repl_process import rlm_chat
+from .repl_process import rlm_chat
 
 
 load_dotenv()
@@ -116,7 +116,7 @@ def health_check():
 @app.get("/api/get-dataset")
 def get_dataset(index: int):
     index = index % 15
-    file_path = f"Backend/data/dataset_{index}.json"
+    file_path = f"backend/data/dataset_{index}.json"
 
     if os.path.exists(file_path):
         with open(file_path, "r") as f:
@@ -124,7 +124,7 @@ def get_dataset(index: int):
     else:
         dataset = load_dataset("oolongbench/oolong-real", DATASET_SUBSET, split=DATASET_SPLIT)
         example = dataset[index]
-        os.makedirs("Backend/data", exist_ok=True)
+        os.makedirs("backend/data", exist_ok=True)
         with open(file_path, "w") as f:
             json.dump(example, f)
 
@@ -141,14 +141,14 @@ def query_endpoint(request: QueryRequest):
     context = data["context"]
     question = data["query"]
 
-    cache_path = f"Backend/answer/answer_{index}.json"
+    cache_path = f"backend/answer/answer_{index}.json"
     if os.path.exists(cache_path):
         with open(cache_path, 'r') as f:
             cached_data = json.load(f)
             return {"final_answer": cached_data['final_answer'], "messages": cached_data['code_and_output']}
 
     final_answer, code_and_output = rlm_chat(context, question)
-    os.makedirs("Backend/answer", exist_ok=True)
+    os.makedirs("backend/answer", exist_ok=True)
 
     with open(cache_path, 'w') as f:
         json.dump({'final_answer': final_answer, 'code_and_output': code_and_output}, f)
