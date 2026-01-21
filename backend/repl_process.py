@@ -2,8 +2,8 @@ from huggingface_hub import InferenceClient
 from dotenv import load_dotenv
 import os
 
-from Backend.repl_env import REPLEnv
-from Backend.repl_env.prompts import (
+from backend.repl_env import REPLEnv
+from backend.repl_env.prompts import (
     RLM_SYSTEM_PROMPT,
     QueryMetadata,
     build_rlm_system_prompt,
