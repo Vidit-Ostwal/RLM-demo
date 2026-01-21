@@ -21,7 +21,7 @@ RUN apt-get update && \
 
 COPY Backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-RUN pip install -e git+https://github.com/meta-pytorch/OpenEnv.git@90f98d60dd502ec4be1ad370570970176ed26648#egg=openenv-core
+RUN pip install git+https://github.com/meta-pytorch/OpenEnv.git@90f98d60dd502ec4be1ad370570970176ed26648#egg=openenv-core
 
 
 COPY Backend ./Backend
