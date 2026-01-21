@@ -37,6 +37,7 @@ def get_dataset(index: int):
     file_path = f"backend/data/dataset_{index}.json"
 
     if os.path.exists(file_path):
+        print(f"Cache hit for index {index}")
         with open(file_path, "r") as f:
             example = json.load(f)
     else:
@@ -61,6 +62,7 @@ def query_endpoint(request: QueryRequest):
 
     cache_path = f"backend/answer/answer_{index}.json"
     if os.path.exists(cache_path):
+        print(f"Cache hit for index {index}")
         with open(cache_path, 'r') as f:
             cached_data = json.load(f)
             return {"final_answer": cached_data['final_answer'], "messages": cached_data['code_and_output']}
