@@ -1,17 +1,17 @@
 export function getMessageBg(type: string) {
     switch (type) {
         case "system prompt":
-            return "border-purple-500 text-purple-400 hover:bg-purple-950"
+            return "border-violet-400/60 text-violet-300 hover:bg-violet-950/50 hover:border-violet-400"
         case "user message":
-            return "border-cyan-500 text-cyan-400 hover:bg-cyan-950"
+            return "border-sky-400/60 text-sky-300 hover:bg-sky-950/50 hover:border-sky-400"
         case "assistant message":
-            return "border-green-500 text-green-400 hover:bg-green-950"
+            return "border-emerald-400/60 text-emerald-300 hover:bg-emerald-950/50 hover:border-emerald-400"
         case "repl_call":
         case "sub_llm_call":
-            return "border-orange-500 text-orange-400 hover:bg-orange-950"
+            return "border-amber-400/60 text-amber-300 hover:bg-amber-950/50 hover:border-amber-400"
         case "repl_env_output":
-            return "border-yellow-400 text-yellow-300 hover:bg-yellow-950"
+            return "border-lime-400/60 text-lime-300 hover:bg-lime-950/50 hover:border-lime-400"
         default:
-            return "border-slate-600 text-slate-300 hover:bg-slate-950"
+            return "border-slate-500/60 text-slate-400 hover:bg-slate-900/50 hover:border-slate-500"
     }
 }
