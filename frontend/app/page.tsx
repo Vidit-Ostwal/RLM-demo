@@ -1,7 +1,6 @@
 "use client"
 
 import { useRef, useState, useEffect } from "react"
-// import { ChatExpandToggle } from "./components/ChatExpandToggle"
 import { UIMessage, DatasetSample, ApiResponse, RawMessage } from "./types"
 import { ROLE_BADGES, ENV_ROLE_BADGES } from "./components/constants"
 import { getMessageBg } from "./components/getMessageBg"
@@ -31,6 +30,10 @@ export default function Home() {
   const showReplButtons = lastMessage?.type === "repl_env_interaction"
   const [showContinueButton, setShowContinueButton] = useState(false)
 
+  // Refs for auto-scrolling
+  const chatScrollRef = useRef<HTMLDivElement>(null)
+  const replScrollRef = useRef<HTMLDivElement>(null)
+
   const [activeModal, setActiveModal] = useState<
     | { type: "context" | "query" | "expected_answer" }
     | { type: "chat"; role: string; text: string }
@@ -45,7 +48,19 @@ export default function Home() {
 
   useEffect(() => setShowContinueButton(false), [lastMessage])
 
+  // Auto-scroll when visibleMessages changes
+  useEffect(() => {
+    if (chatScrollRef.current) {
+      chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight
+    }
+  }, [visibleMessages])
 
+  // Auto-scroll when replMessages changes
+  useEffect(() => {
+    if (replScrollRef.current) {
+      replScrollRef.current.scrollTop = replScrollRef.current.scrollHeight
+    }
+  }, [replMessages])
 
   async function runUntilPause() {
     while (true) {
@@ -67,7 +82,6 @@ export default function Home() {
           }
 
           setVisibleMessages(prev => [...prev, combinedMsg])
-          // setReplMessages([msg, output])
           indexRef.current += 2
           pausedRef.current = true
           return
@@ -82,7 +96,6 @@ export default function Home() {
       await sleep(1500)
     }
   }
-
 
   useEffect(() => {
     setVisibleMessages([])
@@ -128,7 +141,6 @@ export default function Home() {
     )
   }
 
-
   async function shuffleDataset(index?: number) {
     if (shuffleLoading) return
     setShuffleLoading(true)
@@ -162,14 +174,7 @@ export default function Home() {
     if (!datasetIndexRef.current) return
 
     setLoading(true)
-
     try {
-
-      // const res = await fetch("http://localhost:8000/query", {
-      //   method: "POST",
-      //   headers: { "Content-Type": "application/json" },
-      //   body: JSON.stringify({ index: datasetIndexRef.current }),
-      // })
 
       // const res = await fetch("/api/query", {
       //   method: "POST",
@@ -178,8 +183,6 @@ export default function Home() {
       // })
 
       // const data: ApiResponse = await res.json()
-
-
       const data: ApiResponse = {
         "messages": [
           { "role": "system", "content": "You are tasked with answering a query with associated context. You can access, transform, and analyze this context interactively in a REPL environment that can recursively query sub-LLMs, which you are strongly encouraged to use as much as possible. You will be queried iteratively until you provide a final answer.\n\n    The REPL environment is initialized with:\n1. A `context` variable that contains extremely important information about your query. You should check the content of the `context` variable to understand what you are working with. Make sure you look through it sufficiently as you answer your query.\n2. A `llm_query` function that allows you to query an LLM (that can handle around 500K chars) inside your REPL environment.\n3. A `llm_query_batched` function that allows you to query multiple prompts concurrently: `llm_query_batched(prompts: List[str]) -> List[str]`. This is much faster than sequential `llm_query` calls when you have multiple independent queries. Results are returned in the same order as the input prompts.\n4. The ability to use `print()` statements to view the output of your REPL code and continue your reasoning.\n\nYou will only be able to see truncated outputs from the REPL environment, so you should use the query LLM function on variables you want to analyze. You will find this function especially useful when you have to analyze the semantics of the context. Use these variables as buffers to build up your final answer.\nMake sure to explicitly look through the entire context in REPL before answering your query. An example strategy is to first look at the context and figure out a chunking strategy, then break up the context into smart chunks, and query an LLM per chunk with a particular question and save the answers to a buffer, then query an LLM with all the buffers to produce your final answer.\n\nYou can use the REPL environment to help you understand your context, especially if it is huge. Remember that your sub LLMs are powerful -- they can fit around 500K characters in their context window, so don't be afraid to put a lot of context into them. For example, a viable strategy is to feed 10 documents per sub-LLM query. Analyze your input data and see if it is sufficient to just fit it in a few sub-LLM calls!\n\nWhen you want to execute Python code in the REPL environment, wrap it in triple backticks with 'repl' language identifier. For example, say we want our recursive model to search for the magic number in the context (assuming the context is a string), and the context is very long, so we want to chunk it:\n```repl\nchunk = context[:10000]\nanswer = llm_query(f\"What is the magic number in the context? Here is the chunk: {{chunk}}\")\nprint(answer)\n```\n\nAs an example, suppose you're trying to answer a question about a book. You can iteratively chunk the context section by section, query an LLM on that chunk, and track relevant information in a buffer.\n```repl\nquery = \"In Harry Potter and the Sorcerer's Stone, did Gryffindor win the House Cup because they led?\"\nfor i, section in enumerate(context):\n    if i == len(context) - 1:\n        buffer = llm_query(f\"You are on the last section of the book. So far you know that: {{buffers}}. Gather from this last section to answer {{query}}. Here is the section: {{section}}\")\n        print(f\"Based on reading iteratively through the book, the answer is: {{buffer}}\")\n    else:\n        buffer = llm_query(f\"You are iteratively looking through a book, and are on section {{i}} of {{len(context)}}. Gather information to help answer {{query}}. Here is the section: {{section}}\")\n        print(f\"After section {{i}} of {{len(context)}}, you have tracked: {{buffer}}\")\n```\n\nAs another example, when the context isn't that long (e.g. >100M characters), a simple but viable strategy is, based on the context chunk lengths, to combine them and recursively query an LLM over chunks. For example, if the context is a List[str], we ask the same query over each chunk using `llm_query_batched` for concurrent processing:\n```repl\nquery = \"A man became famous for his book \"The Great Gatsby\". How many jobs did he have?\"\n# Suppose our context is ~1M chars, and we want each sub-LLM query to be ~0.1M chars so we split it into 10 chunks\nchunk_size = len(context) // 10\nchunks = []\nfor i in range(10):\n    if i < 9:\n        chunk_str = \"\\n\".join(context[i*chunk_size:(i+1)*chunk_size])\n    else:\n        chunk_str = \"\\n\".join(context[i*chunk_size:])\n    chunks.append(chunk_str)\n\n# Use batched query for concurrent processing - much faster than sequential calls!\nprompts = [f\"Try to answer the following query: {{query}}. Here are the documents:\\n{{chunk}}. Only answer if you are confident in your answer based on the evidence.\" for chunk in chunks]\nanswers = llm_query_batched(prompts)\nfor i, answer in enumerate(answers):\n    print(f\"I got the answer from chunk {{i}}: {{answer}}\")\nfinal_answer = llm_query(f\"Aggregating all the answers per chunk, answer the original query about total number of jobs: {{query}}\\n\\nAnswers:\\n\" + \"\\n\".join(answers))\n```\n\nAs a final example, after analyzing the context and realizing its separated by Markdown headers, we can maintain state through buffers by chunking the context by headers, and iteratively querying an LLM over it:\n```repl\n# After finding out the context is separated by Markdown headers, we can chunk, summarize, and answer\nimport re\nsections = re.split(r'### (.+)', context[\"content\"])\nbuffers = []\nfor i in range(1, len(sections), 2):\n    header = sections[i]\n    info = sections[i+1]\n    summary = llm_query(f\"Summarize this {{header}} section: {{info}}\")\n    buffers.append(f\"{{header}}: {{summary}}\")\nfinal_answer = llm_query(f\"Based on these summaries, answer the original query: {{query}}\\n\\nSummaries:\\n\" + \"\\n\".join(buffers))\n```\nIn the next step, we can return FINAL_VAR(\"final_answer\").\n\nIMPORTANT: When you are done with the iterative process, you MUST provide a final answer using one of the FINAL functions. Do not use these unless you have completed your task. You have two options:\n1. Use FINAL(value) to provide the answer directly, e.g., FINAL(42) or FINAL(my_variable)\n2. Use FINAL_VAR(\"variable_name\") to return a variable by name, e.g., FINAL_VAR(\"final_answer\")\n\nThink step by step carefully, plan, and execute this plan immediately in your response -- do not just say \"I will do this\" or \"I will do that\". Output to the REPL environment and recursive LLMs as much as possible. Remember to explicitly answer the original query in your final answer.\n" },
@@ -212,8 +215,6 @@ export default function Home() {
     }
   }
 
-
-  /* -------- Modal typing -------- */
   const modalText =
     activeModal?.type === "chat"
       ? activeModal.text
@@ -223,44 +224,61 @@ export default function Home() {
           ? dataset?.query
           : dataset?.expected_answer
 
-  // What the UI should render
   const displayText = modalText
 
   return (
     <main className="h-screen w-screen bg-slate-950 text-slate-100 flex flex-col p-6">
 
       {/* Header */}
-      <div className="flex items-center justify-center gap-2 mb-3 relative shrink-0">
-        <h1 className="text-2xl font-bold text-emerald-400">Recursive Language Model</h1>
+      <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 mb-3 relative shrink-0">
+        <div></div>
 
-        {/* Info button wrapper becomes the group */}
-        <div className="relative group">
-          <button className="w-5 h-5 flex items-center justify-center rounded-full border border-emerald-500 text-emerald-400 text-[10px] font-serif italic hover:bg-emerald-900 hover:text-emerald-300 transition-colors cursor-help">
-            i
-          </button>
+        <div className="flex items-center gap-2 justify-self-center">
+          <h1 className="text-2xl font-bold bg-gradient-to-r from-emerald-400 to-teal-300 bg-clip-text text-transparent">
+            Recursive Language Model
+          </h1>
 
-          {/* Tooltip */}
-          <div className="pointer-events-none absolute left-1/2 -translate-x-1/2 top-full mt-2 w-[450px] opacity-0 translate-y-1 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-200 bg-slate-900 border border-emerald-500/30 shadow-2xl rounded-lg p-3 text-xs text-slate-300 z-50">
-            <div className="font-semibold mb-1 text-emerald-400">Recursive Language Model</div>
-            <p className="leading-relaxed">
-              A Recursive Language Model (RLM) solves the long-context problem that limits traditional LLMs, which can only attend to a fixed number of tokens at once. Instead of feeding the whole input into the model, an RLM treats the prompt as an external environment and programmatically inspects, decomposes, and processes it. It uses a REPL where the model writes code to explore the data, makes recursive calls on smaller chunks, and combines results. This lets the model handle arbitrarily long input more accurately and cheaply than standard long-context tricks, dramatically outperforming base LLMs on complex tasks.
-            </p>
+          <div className="relative group">
+            <button className="w-5 h-5 flex items-center justify-center rounded-full border border-emerald-500/70 bg-emerald-950/50 text-emerald-400 text-[10px] font-serif italic hover:bg-emerald-900 hover:border-emerald-400 hover:text-emerald-300 hover:shadow-lg hover:shadow-emerald-500/20 transition-all cursor-help">
+              i
+            </button>
+
+            <div className="pointer-events-none absolute left-1/2 -translate-x-1/2 top-full mt-2 w-[450px] opacity-0 translate-y-1 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-200 bg-gradient-to-br from-slate-900 to-slate-800 border border-emerald-500/30 shadow-2xl shadow-emerald-500/10 rounded-lg p-3 text-xs text-slate-300 z-50">
+              <div className="font-semibold mb-1 text-emerald-400">Recursive Language Model</div>
+              <p className="leading-relaxed">
+                A Recursive Language Model (RLM) solves the long-context problem that limits traditional LLMs, which can only attend to a fixed number of tokens at once. Instead of feeding the whole input into the model, an RLM treats the prompt as an external environment and programmatically inspects, decomposes, and processes it. It uses a REPL where the model writes code to explore the data, makes recursive calls on smaller chunks, and combines results. This lets the model handle arbitrarily long input more accurately and cheaply than standard long-context tricks, dramatically outperforming base LLMs on complex tasks.
+              </p>
+            </div>
           </div>
         </div>
 
-        <div className="absolute right-1 group">
-          <button
-            onClick={() => { setDataset(null); setInput(""); setMessages([]); setVisibleMessages([]); }}
-            className="text-xs text-slate-400 hover:text-slate-200 border border-emerald-500/50 px-2 py-1 rounded bg-slate-900 hover:bg-slate-800 transition-colors uppercase"
-          >
-            Reset
-          </button>
+        <div className="flex items-center gap-2 justify-self-end">
+          {pausedRef.current && (
+            <div className="flex items-center gap-2.5 px-3.5 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-md border-2 border-red-500/80 bg-gradient-to-r from-red-950/90 to-red-900/70 text-red-300 shadow-lg shadow-red-500/20">
+              <span className="relative flex h-2.5 w-2.5">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
+                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500 shadow-lg shadow-red-500/50" />
+              </span>
+              <span className="whitespace-nowrap">
+                Paused · click on REPL Interaction button below
+              </span>
+            </div>
+          )}
 
-          <div className="pointer-events-none absolute right-0 top-full mt-2 w-[450px] opacity-0 translate-y-1 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-200 bg-slate-900 border border-emerald-500/30 shadow-2xl rounded-lg p-3 text-xs text-slate-300 z-50">
-            <div className="font-semibold mb-1 text-emerald-400">Reset</div>
-            <p className="leading-relaxed">
-              Clicking this will reset the application state and reload the page.
-            </p>
+          <div className="group">
+            <button
+              onClick={() => { setDataset(null); setInput(""); setMessages([]); setVisibleMessages([]); }}
+              className="text-xs text-slate-400 hover:text-emerald-300 border border-emerald-500/50 hover:border-emerald-400 px-2.5 py-1 rounded bg-slate-900/80 hover:bg-slate-800 hover:shadow-md hover:shadow-emerald-500/10 transition-all uppercase font-semibold"
+            >
+              Reset
+            </button>
+
+            <div className="pointer-events-none absolute right-0 top-full mt-2 w-[450px] opacity-0 translate-y-1 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-200 bg-gradient-to-br from-slate-900 to-slate-800 border border-emerald-500/30 shadow-2xl shadow-emerald-500/10 rounded-lg p-3 text-xs text-slate-300 z-50">
+              <div className="font-semibold mb-1 text-emerald-400">Reset</div>
+              <p className="leading-relaxed">
+                Clicking this will reset the application state and reload the page.
+              </p>
+            </div>
           </div>
         </div>
       </div>
@@ -269,13 +287,12 @@ export default function Home() {
       <div className="mb-6 shrink-0">
         <div className="grid grid-cols-10 gap-6 w-full h-[200px]">
 
-          {/* ================= CONTEXT ================= */}
+          {/* CONTEXT */}
           <div className="col-span-6 relative group h-full">
             <div
               onClick={() => dataset && setActiveModal({ type: "context" })}
               className="h-full flex flex-col bg-slate-900 border border-emerald-500/30 rounded-lg p-4 overflow-hidden cursor-pointer hover:shadow-lg hover:shadow-emerald-500/20 hover:border-emerald-500/50 transition"
             >
-              {/* Header */}
               <div className="pb-2 border-b border-slate-700 text-xs font-semibold text-emerald-400 uppercase tracking-wide shrink-0">
                 CONTEXT
                 {dataset && (
@@ -285,7 +302,6 @@ export default function Home() {
                 )}
               </div>
 
-              {/* Scrollable content */}
               <div className="mt-2 flex-1 overflow-y-auto text-sm whitespace-pre-wrap text-slate-300 pr-1">
                 {dataset
                   ? truncate(dataset.context, charLimit)
@@ -293,7 +309,6 @@ export default function Home() {
               </div>
             </div>
 
-            {/* Tooltip */}
             <div
               className="pointer-events-none absolute -top-2 left-1/3 -translate-x-1/2 -translate-y-full
         opacity-0 group-hover:opacity-100 transition
@@ -303,21 +318,19 @@ export default function Home() {
             </div>
           </div>
 
-          {/* ================= RIGHT COLUMN ================= */}
+          {/* RIGHT COLUMN */}
           <div className="col-span-4 flex flex-col gap-4 h-full">
 
-            {/* ================= USER QUERY (80%) ================= */}
+            {/* USER QUERY */}
             <div className="relative group flex-[4] h-full">
               <div
                 onClick={() => dataset && setActiveModal({ type: "query" })}
                 className="h-full flex flex-col bg-slate-900 border border-emerald-500/30 rounded-lg p-4 overflow-hidden cursor-pointer hover:shadow-lg hover:shadow-emerald-500/20 hover:border-emerald-500/50 transition"
               >
-                {/* Header */}
                 <div className="pb-2 border-b border-slate-700 text-xs font-semibold text-emerald-400 uppercase tracking-wide shrink-0">
                   USER QUERY
                 </div>
 
-                {/* Scrollable content */}
                 <div className="mt-2 flex-1 overflow-y-auto text-sm text-slate-300 whitespace-pre-wrap pr-1">
                   {dataset
                     ? truncate(dataset.query, 100)
@@ -325,7 +338,6 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* Tooltip */}
               <div
                 className="pointer-events-none absolute -top-2 left-1/2 -translate-x-1/2 -translate-y-full
           opacity-0 group-hover:opacity-100 transition
@@ -336,7 +348,7 @@ export default function Home() {
               </div>
             </div>
 
-            {/* ================= BUTTON ROW (20%) ================= */}
+            {/* BUTTON ROW */}
             <div className="flex-[1] flex items-end gap-3 shrink-0">
 
               <button
@@ -368,40 +380,31 @@ export default function Home() {
         </div>
       </div>
 
-      {/* OUTER WRAPPER (this expands) */}
-      <div className={`flex-1 grid grid-cols-10 gap-6 min-h-0 transition-all duration-300 ${chatExpanded ? "fixed inset-0 z-50 p-6 bg-slate-950" : "relative"}`}
+      {/* OUTER WRAPPER */}
+      <div
+        className={`flex-1 grid grid-cols-10 gap-6 min-h-0 transition-all duration-300 ${chatExpanded ? "fixed inset-0 z-50 p-6 bg-slate-950" : "relative"
+          }`}
       >
-
-        {/* LEFT: CHAT (7 cols) */}
-        <div className="col-span-6 min-h-0">
-          <div className="border border-green-500 rounded-xl bg-black h-full flex flex-col min-h-0">
+        {/* LEFT: CHAT */}
+        <div className="col-span-6 min-h-0 min-w-0">
+          <div className="border border-green-500 rounded-xl bg-black h-full flex flex-col min-h-0 min-w-0">
 
             {/* HEADER */}
-            <div className="px-4 py-2 border-b border-green-500 bg-black shrink-0 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-semibold text-green-400 uppercase tracking-wide">
+            <div className="px-4 py-2 border-b border-green-500 bg-black shrink-0 flex items-center justify-between min-w-0">
+
+              <div className="flex items-center gap-2 min-w-0 overflow-hidden">
+                <span className="text-xs font-semibold text-green-400 uppercase tracking-wide shrink-0">
                   Conversation Trace
                 </span>
 
-                <div className="ml-3 flex items-center gap-2 normal-case font-normal tracking-wide min-w-0">
+                <div className="ml-3 flex items-center gap-2 min-w-0 overflow-hidden">
                   {ROLE_BADGES.map((badge) => (
                     <RoleBadge key={badge.role} {...badge} />
                   ))}
                 </div>
               </div>
 
-              <div className="flex items-center gap-3">
-                {pausedRef.current && (
-                  <div className="flex items-center gap-2 px-3 py-1 text-[10px] font-semibold uppercase tracking-wide rounded border border-red-500 bg-black text-red-400">
-                    <span className="relative flex h-2 w-2">
-                      <span className="animate-pulse inline-flex h-full w-full rounded-full bg-red-500" />
-                    </span>
-                    <span className="whitespace-nowrap">
-                      Paused · click on REPL Interaction button below
-                    </span>
-                  </div>
-                )}
-
+              <div className="flex items-center gap-3 shrink-0">
                 <ChatExpandToggle
                   expanded={chatExpanded}
                   disabled={visibleMessages.length === 0}
@@ -410,8 +413,11 @@ export default function Home() {
               </div>
             </div>
 
-            {/* SCROLL AREA */}
-            <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4 bg-black">
+            {/* SCROLL AREA - Added ref here */}
+            <div
+              ref={chatScrollRef}
+              className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4 bg-black scroll-smooth"
+            >
               {visibleMessages
                 .filter((m) => m.type !== "repl_env_interaction")
                 .map((m, i) => {
@@ -427,13 +433,13 @@ export default function Home() {
                         <div
                           onClick={() => setActiveModal({ type: "chat", role, text: fullText })}
                           className="cursor-pointer select-none px-4 py-2 rounded-xl border border-slate-700
-                        bg-[#020617] hover:bg-[#0b1220] transition-colors
-                        text-xs font-terminal text-slate-300 shadow-inner"
+                      bg-[#020617] hover:bg-[#0b1220] transition-colors
+                      text-xs font-terminal text-slate-300 shadow-inner"
                         >
                           REPL ENV INTERACTION
                         </div>
                       </div>
-                    );
+                    )
                   }
 
                   return (
@@ -442,19 +448,16 @@ export default function Home() {
                       onClick={() => setActiveModal({ type: "chat", role, text: fullText })}
                       className={`${align} w-fit max-w-[90%] cursor-pointer border rounded-lg p-3 pt-5 relative mt-2 group bg-black ${styles}`}
                     >
-                      {/* ROLE TAGS */}
                       <div className={`absolute -top-2 ${isAssistant ? "right-2" : "left-2"} flex gap-1`}>
                         <div className={`text-[10px] font-bold px-1 rounded border bg-black ${styles}`}>
                           {role}
                         </div>
                       </div>
 
-                      {/* MESSAGE */}
-                      <div className="whitespace-pre-wrap break-words text-xs text-left font-terminal rounded-md p-3 leading-relaxed shadow-inne">
+                      <div className="whitespace-pre-wrap break-words text-xs text-left font-terminal rounded-md p-3 leading-relaxed">
                         {truncate(fullText, 300)}
                       </div>
 
-                      {/* USAGE TOOLTIP */}
                       {m.type === "assistant message" && m.usage && (
                         <div className="absolute top-6 right-2 z-50 opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-black border border-green-500 text-green-400 text-[12px] px-2 py-1 rounded pointer-events-none">
                           <div>Input Tokens: {m.usage.prompt_tokens}</div>
@@ -475,169 +478,191 @@ export default function Home() {
             {/* FOOTER BUTTON BAR */}
             {showReplButtons && (
               <div className="shrink-0 border-t border-green-500 p-3 bg-black flex justify-center gap-2">
-                {!showContinueButton && <div
-                  onClick={() => {
-                    setReplMessages(lastMessage.messages)
-                    setShowContinueButton(true)
-                  }}
-                  className="cursor-pointer border border-red-500 rounded-full px-4 py-1 bg-black text-red-400 text-[10px] font-semibold uppercase tracking-widest hover:bg-red-950 transition-colors"
-                >
-                  CLICK TO RUN REPL ENVIRONMENT
-                </div>}
+                {!showContinueButton && (
+                  <div
+                    onClick={() => {
+                      setReplMessages((prev) => [...prev, ...lastMessage.messages])
+                      setShowContinueButton(true)
+                    }}
+                    className="cursor-pointer border border-red-500 rounded-full px-4 py-1 bg-black text-red-400 text-[10px] font-semibold uppercase tracking-widest hover:bg-red-950 transition-colors"
+                  >
+                    CLICK TO RUN REPL ENVIRONMENT
+                  </div>
+                )}
 
-                {showContinueButton && <div
-                  onClick={() => {
-                    setReplMessages([])
-                    setVisibleMessages(prev => {
-                      const last = prev.at(-1)
-                      if (last?.type !== "repl_env_interaction") return prev
-                      const newMessages: UIMessage = {
-                        type: "repl_env_interaction_block",
-                        text:
-                          `CODE:\n\n${(last as any).messages[0].code}\n\nOUTPUT:\n\n${(last as any).messages[1].text}`
-                      };
-                      return [...prev.slice(0, -1), newMessages]
-                    })
-                    pausedRef.current = false
-                    runUntilPause()
-                    setShowContinueButton(false)
-                  }}
-                  className="cursor-pointer border border-red-500 rounded-full px-4 py-1 bg-black text-red-400 text-[10px] font-semibold uppercase tracking-widest hover:bg-red-950 transition-colors"
-                >
-                  {lastMessage.text}
-                </div>}
+                {showContinueButton && (
+                  <div
+                    onClick={() => {
+                      // setReplMessages([])
+                      setVisibleMessages((prev) => {
+                        const last = prev.at(-1)
+                        if (last?.type !== "repl_env_interaction") return prev
+                        const newMessages: UIMessage = {
+                          type: "repl_env_interaction_block",
+                          text: `CODE:\n\n${(last as any).messages[0].code}\n\nOUTPUT:\n\n${(last as any).messages[1].text}`,
+                        }
+                        return [...prev.slice(0, -1), newMessages]
+                      })
+                      pausedRef.current = false
+                      runUntilPause()
+                      setShowContinueButton(false)
+                    }}
+                    className="cursor-pointer border border-red-500 rounded-full px-4 py-1 bg-black text-red-400 text-[10px] font-semibold uppercase tracking-widest hover:bg-red-950 transition-colors"
+                  >
+                    {lastMessage.text}
+                  </div>
+                )}
               </div>
             )}
-
           </div>
         </div>
 
-
-        {/* RIGHT PANEL (3 cols) */}
-        <div className="col-span-4 min-h-0">
-          <div className="border border-green-500 rounded-xl bg-black h-full flex flex-col min-h-0">
+        {/* RIGHT PANEL */}
+        <div className="col-span-4 min-h-0 min-w-0">
+          <div className="border border-green-500 rounded-xl bg-black h-full flex flex-col min-h-0 min-w-0">
 
             {/* HEADER */}
-            <div className="px-4 py-2 border-b border-green-500 shrink-0 flex items-center justify-between bg-black">
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-semibold text-green-400 uppercase tracking-wide">
+            <div className="px-4 py-2 border-b border-green-500 shrink-0 flex items-center justify-between bg-black min-w-0">
+
+              <div className="flex items-center gap-2 min-w-0 overflow-hidden">
+                <span className="text-xs font-semibold text-green-400 uppercase tracking-wide shrink-0">
                   REPL ENVIRONMENT
                 </span>
 
-                <div className="ml-3 flex items-center gap-2 normal-case font-normal tracking-wide">
+                <div className="ml-3 flex items-center gap-2 min-w-0 overflow-hidden">
                   {ENV_ROLE_BADGES.map((badge) => (
                     <RoleBadgeEnv key={badge.role} {...badge} />
                   ))}
                 </div>
               </div>
 
-              <ChatExpandToggle
-                expanded={chatExpanded}
-                disabled={visibleMessages.length === 0}
-                onToggle={() => setChatExpanded(!chatExpanded)}
-              />
+              <div className="shrink-0">
+                <ChatExpandToggle
+                  expanded={chatExpanded}
+                  disabled={visibleMessages.length === 0}
+                  onToggle={() => setChatExpanded(!chatExpanded)}
+                />
+              </div>
             </div>
 
             {/* SCROLL AREA */}
-            <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4 bg-black">
-              {replMessages.map((m, i) => {
-                const isAssistant = m.type === "assistant message" || m.type === "repl_call"
-                const role = m.type.toUpperCase()
-                const align = isAssistant ? "ml-auto" : "mr-auto"
-                const fullText = m.type === "repl_call" ? m.code : m.text
+            <div
+              ref={replScrollRef}
+              className="flex-1 min-h-0 overflow-y-auto p-4 space-y-6 bg-black scroll-smooth"
+            >
+              {Array.from({ length: Math.ceil(replMessages.length / 2) }).map((_, pairIndex) => {
+                const pair = replMessages.slice(pairIndex * 2, pairIndex * 2 + 2)
 
-                const styles = getMessageBg(m.type)
                 return (
                   <div
-                    key={i}
-                    onClick={() => setActiveModal({ type: "chat", role, text: fullText })}
-                    className={`${align} w-fit max-w-[90%] cursor-pointer border rounded-lg p-3 pt-5 relative mt-2 group bg-black ${styles}`}>
-                    {/* ROLE TAGS */}
+                    key={pairIndex}
+                    className="relative border border-slate-700 rounded-xl p-4 pl-10 bg-zinc-950"
+                  >
 
-                    <div className={`absolute -top-2 ${isAssistant ? "right-2" : "left-2"} flex gap-1`}>
+                    {/* PAIR MESSAGES */}
+                    <div className="space-y-3">
+                      {pair.map((m, i) => {
+                        const isAssistant = m.type === "assistant message" || m.type === "repl_call"
+                        const role = m.type.toUpperCase()
+                        const align = isAssistant ? "ml-auto" : "mr-auto"
+                        const fullText = m.type === "repl_call" ? m.code : m.text
+                        const styles = getMessageBg(m.type)
 
-                      {m.type === "repl_call" && m.is_sub_llm_called && (
-                        <div className={`text-[10px] font-bold px-1 rounded border bg-black ${styles}`}>
-                          SUB_LLM_CALL
-                        </div>
-                      )}
+                        return (
+                          <div
+                            key={i}
+                            onClick={() =>
+                              setActiveModal({ type: "chat", role, text: fullText })
+                            }
+                            className={`${align} w-fit max-w-[90%] cursor-pointer border rounded-lg p-3 pt-5 relative group bg-black ${styles}`}
+                          >
+                            <div
+                              className={`absolute -top-2 ${isAssistant ? "right-2" : "left-2"
+                                } flex gap-1`}
+                            >
+                              {m.type === "repl_call" && m.is_sub_llm_called && (
+                                <div
+                                  className={`text-[10px] font-bold px-1 rounded border bg-black ${styles}`}
+                                >
+                                  SUB_LLM_CALL
+                                </div>
+                              )}
 
-                      <div className={`text-[10px] font-bold px-1 rounded border bg-black ${styles}`}>
-                        {role}
-                      </div>
+                              <div
+                                className={`text-[10px] font-bold px-1 rounded border bg-black ${styles}`}
+                              >
+                                {role}
+                              </div>
+                            </div>
+
+                            <div className="whitespace-pre-wrap break-words text-xs text-left font-terminal rounded-md p-3 leading-relaxed">
+                              {truncate(fullText, 150)}
+                            </div>
+                          </div>
+                        )
+                      })}
                     </div>
-
-                    {/* MESSAGE */}
-                    <div className="whitespace-pre-wrap break-words text-xs text-left font-terminal rounded-md p-3 leading-relaxed shadow-inne">{truncate(fullText, 1250)}</div>
-
-                    {/* USAGE TOOLTIP */}
-                    {m.type === "assistant message" && m.usage && (
-                      <div className="absolute top-6 right-2 z-50 opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-black border border-green-500 text-green-400 text-[12px] px-2 py-1 rounded pointer-events-none">
-                        <div>Input Tokens: {m.usage.prompt_tokens}</div>
-                        <div>Output Tokens: {m.usage.completion_tokens}</div>
-                        <div>Total Tokens: {m.usage.total_tokens}</div>
-                        <div>Cost: ${m.usage.cost}</div>
-                      </div>
-                    )}
                   </div>
                 )
               })}
 
               {loading && (
-                <div className="text-green-600 italic">Agent is thinking…</div>
+                <div className="text-green-600 italic text-sm px-2">
+                  Agent is thinking…
+                </div>
               )}
             </div>
+
           </div>
         </div>
+
       </div>
 
-      {/* Unified Modal (Dataset + Chat) */}
-      {
-        activeModal && (
+      {/* Unified Modal */}
+      {activeModal && (
+        <div
+          className="fixed inset-0 bg-black/80 flex items-center justify-center z-50"
+          onClick={() => setActiveModal(null)}
+        >
           <div
-            className="fixed inset-0 bg-black/80 flex items-center justify-center z-50"
-            onClick={() => setActiveModal(null)}
-          >
-            <div
-              className="relative bg-slate-900 border border-emerald-500/30 rounded-xl p-6 w-[80vw] max-w-4xl max-h-[80vh] overflow-auto shadow-2xl shadow-emerald-500/20
+            className="relative bg-slate-900 border border-emerald-500/30 rounded-xl p-6 w-[80vw] max-w-4xl max-h-[80vh] overflow-auto shadow-2xl shadow-emerald-500/20
                  font-sans text-[14px] leading-relaxed text-slate-200"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <h2 className="text-base font-medium mb-3 text-emerald-400">
-                {activeModal.type === "chat"
-                  ? activeModal.role
-                  : activeModal.type === "context"
-                    ? "CONTEXT"
-                    : activeModal.type === "query"
-                      ? "USER QUERY"
-                      : "EXPECTED ANSWER"}
-              </h2>
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 className="text-base font-medium mb-3 text-emerald-400">
+              {activeModal.type === "chat"
+                ? activeModal.role
+                : activeModal.type === "context"
+                  ? "CONTEXT"
+                  : activeModal.type === "query"
+                    ? "USER QUERY"
+                    : "EXPECTED ANSWER"}
+            </h2>
 
-              <button
-                onClick={() => setActiveModal(null)}
-                className="absolute top-4 right-4
+            <button
+              onClick={() => setActiveModal(null)}
+              className="absolute top-4 right-4
                           cursor-pointer
                           text-slate-500 hover:text-emerald-400
                           hover:bg-slate-800
                           rounded-full p-1
                           transition-all duration-150"
-              >
-                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
+            >
+              <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
 
-              <hr className="border-slate-700 mb-4" />
+            <hr className="border-slate-700 mb-4" />
 
-              {/* 👇 Conversation box */}
-              <div className="border border-slate-700 rounded-lg p-4 bg-slate-950 max-h-[60vh] overflow-auto">
-                <pre className="whitespace-pre-wrap font-sans text-slate-300">
-                  {displayText}
-                </pre>
-              </div>
+            <div className="border border-slate-700 rounded-lg p-4 bg-slate-950 max-h-[60vh] overflow-auto">
+              <pre className="whitespace-pre-wrap font-sans text-slate-300">
+                {displayText}
+              </pre>
             </div>
           </div>
-        )
+        </div>
+      )
       }
     </main >
   )
