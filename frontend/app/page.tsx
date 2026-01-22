@@ -120,6 +120,14 @@ export default function Home() {
     }
   }, [messages])
 
+  useEffect(() => {
+    window.scrollTo({
+      top: document.body.scrollHeight,
+      behavior: "smooth",
+    })
+  }, [visibleMessages.length])
+
+
   async function runUntilPause() {
     while (true) {
       if (pausedRef.current) return
@@ -262,7 +270,7 @@ export default function Home() {
   }
 
   return (
-    <main className="h-screen w-screen bg-slate-950 text-slate-100 flex flex-col p-6">
+    <main className="min-h-screen w-screen bg-slate-950 text-slate-100 flex flex-col p-6">
 
       {/* Header */}
       <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 mb-3 relative shrink-0">
@@ -422,11 +430,10 @@ export default function Home() {
       >
         {/* LEFT: CHAT */}
         <div className="col-span-6 min-h-0 min-w-0">
-          <div className="border border-green-500 rounded-xl bg-black h-full flex flex-col min-h-0 min-w-0">
+          <div className="border border-green-500 rounded-xl bg-slate-900 border border-emerald-500/30 h-full flex flex-col min-h-0 min-w-0">
 
             {/* HEADER */}
             <div className="px-4 py-2 border-b border-green-500 bg-black shrink-0 flex items-center justify-between min-w-0">
-
               <div className="flex items-center gap-2 min-w-0 overflow-hidden">
                 <span className="text-xs font-semibold text-green-400 uppercase tracking-wide shrink-0">
                   Conversation Trace
@@ -438,20 +445,12 @@ export default function Home() {
                   ))}
                 </div>
               </div>
-
-              <div className="flex items-center gap-3 shrink-0">
-                <ChatExpandToggle
-                  expanded={chatExpanded}
-                  disabled={visibleMessages.length === 0}
-                  onToggle={() => setChatExpanded(!chatExpanded)}
-                />
-              </div>
             </div>
 
             {/* SCROLL AREA */}
             <div
               ref={chatScrollRef}
-              className="flex-1 min-h-0 overflow-y-auto p-4 space-y-6 bg-black scroll-smooth"
+              className="flex-1 min-h-0 overflow-y-auto p-4 space-y-6 bg-black"
             >
               {groupedMessages.map((group, groupIndex) => {
                 const isTriple = group.length === 3
@@ -471,6 +470,13 @@ export default function Home() {
                       </div>
                     )}
 
+                    {!isTriple && !isDouble && (
+                      <div className="text-[10px] uppercase tracking-widest text-slate-500 mb-3">
+                        {group[0]?.type}
+                      </div>
+                    )}
+
+
                     {/* GROUP MESSAGES */}
                     {group.map((m, i) => {
                       const isAssistant = m.type === "assistant message" || m.type === "repl_call"
@@ -487,8 +493,8 @@ export default function Home() {
                               setActiveModal({ type: "chat", role, text: fullText })
                             }
                             className="w-full flex justify-center">
-                            <div className="px-4 py-2 rounded-xl border border-slate-700 bg-[#020617] text-xs font-terminal text-slate-300">
-                              REPL ENV INTERACTION
+                            <div className="px-4 py-2 rounded-xl border border-slate-700 bg-[#020617] text-xs font-bold text-slate-300">
+                              REPL ENVIRONMENT INTERACTION
                             </div>
                           </div>
                         )
@@ -597,20 +603,12 @@ export default function Home() {
                   ))}
                 </div>
               </div>
-
-              <div className="shrink-0">
-                <ChatExpandToggle
-                  expanded={chatExpanded}
-                  disabled={visibleMessages.length === 0}
-                  onToggle={() => setChatExpanded(!chatExpanded)}
-                />
-              </div>
             </div>
 
             {/* SCROLL AREA */}
             <div
               ref={replScrollRef}
-              className="flex-1 min-h-0 overflow-y-auto p-4 space-y-6 bg-black scroll-smooth"
+              className="p-4 space-y-6 bg-black"
             >
               {Array.from({ length: Math.ceil(replMessages.length / 2) }).map((_, pairIndex) => {
                 const pair = replMessages.slice(pairIndex * 2, pairIndex * 2 + 2)
