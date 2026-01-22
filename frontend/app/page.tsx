@@ -29,16 +29,62 @@ export default function Home() {
   const lastMessage = visibleMessages.at(-1)
   const showReplButtons = lastMessage?.type === "repl_env_interaction"
   const [showContinueButton, setShowContinueButton] = useState(false)
-
-  // Refs for auto-scrolling
   const chatScrollRef = useRef<HTMLDivElement>(null)
   const replScrollRef = useRef<HTMLDivElement>(null)
+  const groupedMessages: UIMessage[][] = []
 
   const [activeModal, setActiveModal] = useState<
     | { type: "context" | "query" | "expected_answer" }
     | { type: "chat"; role: string; text: string }
     | null
   >(null)
+
+  const modalText =
+    activeModal?.type === "chat"
+      ? activeModal.text
+      : activeModal?.type === "context"
+        ? truncate(dataset?.context, 500000)
+        : activeModal?.type === "query"
+          ? dataset?.query
+          : dataset?.expected_answer
+  const displayText = modalText
+
+
+  for (let i = 0; i < visibleMessages.length;) {
+    const curr = visibleMessages[i]
+    const next = visibleMessages[i + 1]
+    const next2 = visibleMessages[i + 2]
+
+    // 🔴 priority 1: assistant → repl → user
+    if (curr?.type === "repl_env_interaction") {
+      i += 1
+      continue
+    }
+
+    if (
+      curr?.type === "assistant message" &&
+      next?.type === "repl_env_interaction_block" &&
+      next2?.type === "user message"
+    ) {
+      groupedMessages.push([curr, next, next2])
+      i += 3
+      continue
+    }
+
+    // 🟠 priority 2: assistant → user
+    if (
+      curr?.type === "assistant message" &&
+      next?.type === "user message"
+    ) {
+      groupedMessages.push([curr, next])
+      i += 2
+      continue
+    }
+
+    // ⚪ fallback: single
+    groupedMessages.push([curr])
+    i += 1
+  }
 
   useEffect(() => {
     if (initialLoadRef.current) return
@@ -61,6 +107,18 @@ export default function Home() {
       replScrollRef.current.scrollTop = replScrollRef.current.scrollHeight
     }
   }, [replMessages])
+
+  useEffect(() => {
+    setVisibleMessages([])
+    setReplMessages([])
+    indexRef.current = 0
+    pausedRef.current = false
+
+    // auto-start first step
+    if (messages.length) {
+      runUntilPause()
+    }
+  }, [messages])
 
   async function runUntilPause() {
     while (true) {
@@ -96,18 +154,6 @@ export default function Home() {
       await sleep(1500)
     }
   }
-
-  useEffect(() => {
-    setVisibleMessages([])
-    setReplMessages([])
-    indexRef.current = 0
-    pausedRef.current = false
-
-    // auto-start first step
-    if (messages.length) {
-      runUntilPause()
-    }
-  }, [messages])
 
   function CollapseIcon() {
     return (
@@ -214,17 +260,6 @@ export default function Home() {
       setLoading(false)
     }
   }
-
-  const modalText =
-    activeModal?.type === "chat"
-      ? activeModal.text
-      : activeModal?.type === "context"
-        ? truncate(dataset?.context, 500000)
-        : activeModal?.type === "query"
-          ? dataset?.query
-          : dataset?.expected_answer
-
-  const displayText = modalText
 
   return (
     <main className="h-screen w-screen bg-slate-950 text-slate-100 flex flex-col p-6">
@@ -413,62 +448,89 @@ export default function Home() {
               </div>
             </div>
 
-            {/* SCROLL AREA - Added ref here */}
+            {/* SCROLL AREA */}
             <div
               ref={chatScrollRef}
-              className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4 bg-black scroll-smooth"
+              className="flex-1 min-h-0 overflow-y-auto p-4 space-y-6 bg-black scroll-smooth"
             >
-              {visibleMessages
-                .filter((m) => m.type !== "repl_env_interaction")
-                .map((m, i) => {
-                  const isAssistant = m.type === "assistant message" || m.type === "repl_call"
-                  const role = m.type.toUpperCase()
-                  const align = isAssistant ? "ml-auto" : "mr-auto"
-                  const fullText = m.type === "repl_call" ? m.code : m.text
-                  const styles = getMessageBg(m.type)
+              {groupedMessages.map((group, groupIndex) => {
+                const isTriple = group.length === 3
+                const isDouble = group.length === 2
 
-                  if (m.type === "repl_env_interaction_block") {
-                    return (
-                      <div key={i} className="w-full flex justify-center mt-3">
+                return (
+                  <div
+                    key={groupIndex}
+                    className={`rounded-xl border border-slate-700 p-3 space-y-2 bg-zinc-950`}
+                  >
+                    {/* GROUP LABEL */}
+                    {(isTriple || isDouble) && (
+                      <div className="text-[10px] uppercase tracking-widest text-slate-500 mb-2">
+                        {isTriple
+                          ? "ASSISTANT → REPL → USER"
+                          : "ASSISTANT → USER"}
+                      </div>
+                    )}
+
+                    {/* GROUP MESSAGES */}
+                    {group.map((m, i) => {
+                      const isAssistant = m.type === "assistant message" || m.type === "repl_call"
+                      const role = m.type.toUpperCase()
+                      const align = isAssistant ? "ml-auto" : "mr-auto"
+                      const fullText = m.type === "repl_call" ? m.code : m.text
+                      const styles = getMessageBg(m.type)
+
+                      if (m.type === "repl_env_interaction_block") {
+                        return (
+                          <div
+                            key={i}
+                            onClick={() =>
+                              setActiveModal({ type: "chat", role, text: fullText })
+                            }
+                            className="w-full flex justify-center">
+                            <div className="px-4 py-2 rounded-xl border border-slate-700 bg-[#020617] text-xs font-terminal text-slate-300">
+                              REPL ENV INTERACTION
+                            </div>
+                          </div>
+                        )
+                      }
+
+                      return (
                         <div
-                          onClick={() => setActiveModal({ type: "chat", role, text: fullText })}
-                          className="cursor-pointer select-none px-4 py-2 rounded-xl border border-slate-700
-                      bg-[#020617] hover:bg-[#0b1220] transition-colors
-                      text-xs font-terminal text-slate-300 shadow-inner"
+                          key={i}
+                          onClick={() =>
+                            setActiveModal({ type: "chat", role, text: fullText })
+                          }
+                          className={`${align} w-fit max-w-[90%] cursor-pointer border rounded-lg p-3 pt-5 relative group bg-black ${styles}`}
                         >
-                          REPL ENV INTERACTION
-                        </div>
-                      </div>
-                    )
-                  }
+                          <div
+                            className={`absolute -top-2 ${isAssistant ? "right-2" : "left-2"
+                              } flex gap-1`}
+                          >
+                            <div
+                              className={`text-[10px] font-bold px-1 rounded border bg-black ${styles}`}
+                            >
+                              {role}
+                            </div>
+                          </div>
 
-                  return (
-                    <div
-                      key={i}
-                      onClick={() => setActiveModal({ type: "chat", role, text: fullText })}
-                      className={`${align} w-fit max-w-[90%] cursor-pointer border rounded-lg p-3 pt-5 relative mt-2 group bg-black ${styles}`}
-                    >
-                      <div className={`absolute -top-2 ${isAssistant ? "right-2" : "left-2"} flex gap-1`}>
-                        <div className={`text-[10px] font-bold px-1 rounded border bg-black ${styles}`}>
-                          {role}
-                        </div>
-                      </div>
+                          <div className="whitespace-pre-wrap break-words text-xs text-left font-terminal rounded-md p-3 leading-relaxed">
+                            {truncate(fullText, 300)}
+                          </div>
 
-                      <div className="whitespace-pre-wrap break-words text-xs text-left font-terminal rounded-md p-3 leading-relaxed">
-                        {truncate(fullText, 300)}
-                      </div>
-
-                      {m.type === "assistant message" && m.usage && (
-                        <div className="absolute top-6 right-2 z-50 opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-black border border-green-500 text-green-400 text-[12px] px-2 py-1 rounded pointer-events-none">
-                          <div>Input Tokens: {m.usage.prompt_tokens}</div>
-                          <div>Output Tokens: {m.usage.completion_tokens}</div>
-                          <div>Total Tokens: {m.usage.total_tokens}</div>
-                          <div>Cost: ${m.usage.cost}</div>
+                          {m.type === "assistant message" && m.usage && (
+                            <div className="absolute top-6 right-2 z-50 opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-black border border-green-500 text-green-400 text-[12px] px-2 py-1 rounded pointer-events-none">
+                              <div>Input Tokens: {m.usage.prompt_tokens}</div>
+                              <div>Output Tokens: {m.usage.completion_tokens}</div>
+                              <div>Total Tokens: {m.usage.total_tokens}</div>
+                              <div>Cost: ${m.usage.cost}</div>
+                            </div>
+                          )}
                         </div>
-                      )}
-                    </div>
-                  )
-                })}
+                      )
+                    })}
+                  </div>
+                )
+              })}
 
               {loading && (
                 <div className="text-green-600 italic">Agent is thinking…</div>
